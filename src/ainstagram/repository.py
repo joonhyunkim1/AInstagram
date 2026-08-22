@@ -93,6 +93,15 @@ def enqueue(
     return cur.lastrowid
 
 
+def next_queue_priority(conn: sqlite3.Connection) -> int:
+    """새 항목을 대기열 맨 뒤에 붙일 때 쓸 우선순위 (숫자가 작을수록 먼저 게시)."""
+    row = conn.execute(
+        "SELECT MAX(priority) AS max_priority FROM queue WHERE status = ?", (c.QUEUE_QUEUED,)
+    ).fetchone()
+    max_priority = row["max_priority"]
+    return (max_priority + 10) if max_priority is not None else 100
+
+
 def next_in_queue(conn: sqlite3.Connection) -> Optional[QueueItem]:
     row = conn.execute(
         """
