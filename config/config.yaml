@@ -29,6 +29,13 @@ image:
     draft_preview: "low"          # 검수용 썸네일 미리보기
     final: "medium"                # 채택 후 실제 업로드용
   thumbnail_style: "TBD"          # 피드 통일용 썸네일 스타일 (색/폰트/레이아웃) - 추후 확정
+  font:
+    regular: "assets/fonts/IBMPlexSansKR-Regular.ttf"
+    bold: "assets/fonts/IBMPlexSansKR-Bold.ttf"
+  brand:
+    primary_color: "#5B5BD6"        # 피드 통일감을 위한 포인트 색 - 나중에 자유롭게 변경
+    overlay_opacity: 160             # 배경 위 텍스트 가독성용 어두운 오버레이 (0~255)
+    canvas_size: [1080, 1080]        # 캐러셀은 첫 장 비율에 맞춰 나머지가 크롭되므로 전부 1:1로 통일
 
 review:
   draft_candidates: 3             # 매 회 생성할 예비 게시물 수

@@ -50,12 +50,27 @@ class ImageQualityConfig:
 
 
 @dataclass
+class FontConfig:
+    regular: str
+    bold: str
+
+
+@dataclass
+class BrandConfig:
+    primary_color: str
+    overlay_opacity: int
+    canvas_size: tuple[int, int]
+
+
+@dataclass
 class ImageConfig:
     text_model: str
     embedding_model: str
     image_model: str
     quality: ImageQualityConfig
     thumbnail_style: str
+    font: FontConfig
+    brand: BrandConfig
 
 
 @dataclass
@@ -105,6 +120,15 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
             final=raw["image"]["quality"]["final"],
         ),
         thumbnail_style=raw["image"]["thumbnail_style"],
+        font=FontConfig(
+            regular=raw["image"]["font"]["regular"],
+            bold=raw["image"]["font"]["bold"],
+        ),
+        brand=BrandConfig(
+            primary_color=raw["image"]["brand"]["primary_color"],
+            overlay_opacity=raw["image"]["brand"]["overlay_opacity"],
+            canvas_size=tuple(raw["image"]["brand"]["canvas_size"]),
+        ),
     )
     review = ReviewConfig(draft_candidates=raw["review"]["draft_candidates"])
 
