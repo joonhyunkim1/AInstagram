@@ -6,6 +6,7 @@ AI 이미지 생성 모델이 텍스트까지 그리게 하면 매번 스타일�
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from PIL import Image, ImageDraw, ImageFont
@@ -45,19 +46,43 @@ def _load_font(path: str, size: int) -> ImageFont.ImageFont:
 
 
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
+    """줄 길이를 최대한 균등하게 나눈다.
+
+    첫 줄을 max_width까지 꽉 채우고 남는 단어를 마지막 줄에 몰아넣으면
+    '긴 줄 + 짧은 한 단어' 같은 어색한 줄바꿈이 생기기 쉬워서,
+    전체 폭으로 필요한 줄 수를 먼저 정하고 그 줄 수에 맞게 폭을 나눠 채운다.
+    """
     words = text.split(" ")
+    if len(words) <= 1:
+        return [text]
+
+    space_width = draw.textlength(" ", font=font)
+    widths = [draw.textlength(w, font=font) for w in words]
+    total_width = sum(widths) + space_width * (len(words) - 1)
+
+    if total_width <= max_width:
+        return [text]
+
+    num_lines = max(2, math.ceil(total_width / max_width))
+    target_width = total_width / num_lines
+
     lines: list[str] = []
-    current = ""
-    for word in words:
-        candidate = f"{current} {word}".strip()
-        if draw.textlength(candidate, font=font) <= max_width:
-            current = candidate
+    current_words: list[str] = []
+    current_width = 0.0
+    for word, width in zip(words, widths):
+        added_width = width if not current_words else width + space_width
+        would_exceed_target = current_width + added_width > target_width
+        would_exceed_frame = current_width + added_width > max_width
+        can_still_break = len(lines) < num_lines - 1
+        if current_words and (would_exceed_frame or (would_exceed_target and can_still_break)):
+            lines.append(" ".join(current_words))
+            current_words = [word]
+            current_width = width
         else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
+            current_words.append(word)
+            current_width += added_width
+    if current_words:
+        lines.append(" ".join(current_words))
     return lines
 
 
