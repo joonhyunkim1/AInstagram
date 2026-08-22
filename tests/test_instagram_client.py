@@ -76,8 +76,8 @@ def test_publish_carousel_calls_in_expected_order():
     assert media_id == "media-1"
     urls = [url for url, _ in http.calls]
     assert urls == [
-        "https://graph.facebook.com/v21.0/IGID/media",
-        "https://graph.facebook.com/v21.0/IGID/media",
-        "https://graph.facebook.com/v21.0/IGID/media",
-        "https://graph.facebook.com/v21.0/IGID/media_publish",
+        "https://graph.instagram.com/v21.0/IGID/media",
+        "https://graph.instagram.com/v21.0/IGID/media",
+        "https://graph.instagram.com/v21.0/IGID/media",
+        "https://graph.instagram.com/v21.0/IGID/media_publish",
     ]
