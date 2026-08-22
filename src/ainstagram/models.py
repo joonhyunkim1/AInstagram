@@ -16,6 +16,7 @@ class Draft:
     slides: list[dict[str, Any]]
     thumbnail_url: Optional[str]
     embedding: Optional[list[float]]
+    difficulty_level: Optional[int]
     status: str
     priority: Optional[int]
 
@@ -30,6 +31,7 @@ class Draft:
             slides=json.loads(row["slides_json"]),
             thumbnail_url=row["thumbnail_url"],
             embedding=json.loads(row["embedding_json"]) if row["embedding_json"] else None,
+            difficulty_level=row["difficulty_level"],
             status=row["status"],
             priority=row["priority"],
         )

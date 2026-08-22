@@ -24,11 +24,13 @@ def create_draft(
     slides: list[dict[str, Any]],
     thumbnail_url: Optional[str] = None,
     embedding: Optional[list[float]] = None,
+    difficulty_level: Optional[int] = None,
 ) -> int:
     cur = conn.execute(
         """
-        INSERT INTO drafts (created_at, category, topic, caption, slides_json, thumbnail_url, embedding_json, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO drafts
+            (created_at, category, topic, caption, slides_json, thumbnail_url, embedding_json, difficulty_level, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             _now(),
@@ -38,6 +40,7 @@ def create_draft(
             json.dumps(slides, ensure_ascii=False),
             thumbnail_url,
             json.dumps(embedding) if embedding is not None else None,
+            difficulty_level,
             c.DRAFT_PENDING,
         ),
     )

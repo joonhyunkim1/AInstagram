@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS drafts (
     slides_json TEXT NOT NULL,
     thumbnail_url TEXT,
     embedding_json TEXT,
+    difficulty_level INTEGER,
     status TEXT NOT NULL DEFAULT 'pending',
     priority INTEGER
 );
