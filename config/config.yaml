@@ -1,0 +1,30 @@
+# 계정명/주제는 아직 미확정 - 여기서만 고치면 전체 파이프라인에 반영되도록 구성
+instagram:
+  account_name: "TBD"          # 인스타 계정명 확정되면 채우기
+  business_account_id: ""      # Meta Graph API에서 발급받은 IG 유저 ID
+
+posting:
+  timezone: "Asia/Seoul"
+  times: ["07:00", "12:00", "18:00", "23:00"]
+  images_per_post:
+    min: 5
+    max: 7
+
+content:
+  categories: ["news", "knowledge"]
+  topics: []                    # 세부 주제 미정 - 비어있으면 카테고리 안에서 LLM이 자유롭게 선정
+  dedup:
+    similarity_threshold: 0.85   # 이 값 이상이면 과거 게시물과 중복으로 간주
+    history_window: 30           # 최근 N개 게시물과 비교
+
+image:
+  text_model: "gpt-5-mini"       # 주제/스크립트 생성용
+  embedding_model: "text-embedding-3-small"
+  image_model: "gpt-image-1-mini"  # 필요 시 gpt-image-1 / gpt-image-2로 교체
+  quality:
+    draft_preview: "low"          # 검수용 썸네일 미리보기
+    final: "medium"                # 채택 후 실제 업로드용
+  thumbnail_style: "TBD"          # 피드 통일용 썸네일 스타일 (색/폰트/레이아웃) - 추후 확정
+
+review:
+  draft_candidates: 3             # 매 회 생성할 예비 게시물 수
