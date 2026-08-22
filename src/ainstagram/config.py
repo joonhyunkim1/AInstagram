@@ -39,6 +39,7 @@ class DedupConfig:
 class ContentConfig:
     categories: list[str]
     topics: list[str]
+    news_feeds: list[str]
     dedup: DedupConfig
 
 
@@ -89,6 +90,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     content = ContentConfig(
         categories=raw["content"]["categories"],
         topics=raw["content"].get("topics", []),
+        news_feeds=raw["content"].get("news_feeds", []),
         dedup=DedupConfig(
             similarity_threshold=raw["content"]["dedup"]["similarity_threshold"],
             history_window=raw["content"]["dedup"]["history_window"],

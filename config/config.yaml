@@ -13,6 +13,10 @@ posting:
 content:
   categories: ["news", "knowledge"]
   topics: []                    # 세부 주제 미정 - 비어있으면 카테고리 안에서 LLM이 자유롭게 선정
+  news_feeds:                   # 무료 RSS - 필요하면 자유롭게 추가/삭제
+    - "https://hnrss.org/newest?q=AI"
+    - "https://export.arxiv.org/rss/cs.AI"
+    - "https://www.artificialintelligence-news.com/feed/"
   dedup:
     similarity_threshold: 0.85   # 이 값 이상이면 과거 게시물과 중복으로 간주
     history_window: 30           # 최근 N개 게시물과 비교
