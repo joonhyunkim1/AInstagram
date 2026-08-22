@@ -1,7 +1,9 @@
 """Instagram Graph API 클라이언트.
 
-본인 소유 계정에만 게시하는 경우 Meta 앱 리뷰 없이 Development mode +
-Instagram Tester 등록만으로 사용 가능하다.
+2024년 7월부터 생긴 'Instagram API with Instagram Login' 방식을 쓴다.
+Facebook 페이지 연결 없이 Instagram 비즈니스/크리에이터 계정으로 바로 로그인해서
+토큰을 발급받을 수 있어서, 페이지 연결이 필요한 구방식(graph.facebook.com)보다 설정이 간단하다.
+본인 소유 계정에만 게시하는 경우 Meta 앱 리뷰도 필요 없다.
 
 캐러셀 발행 순서: 아이템별 미디어 컨테이너 생성 -> 캐러셀 부모 컨테이너 생성 -> 발행.
 """
@@ -28,7 +30,7 @@ class InstagramClient:
         self._http = http
         self.business_account_id = business_account_id
         self.access_token = access_token
-        self.base_url = f"https://graph.facebook.com/{api_version}"
+        self.base_url = f"https://graph.instagram.com/{api_version}"
 
     def _post(self, path: str, **params: Any) -> dict:
         params["access_token"] = self.access_token

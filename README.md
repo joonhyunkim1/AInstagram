@@ -47,15 +47,18 @@ pytest tests/ -q
 ### 1. OpenAI API 키
 https://platform.openai.com/api-keys 에서 발급. `.env`의 `OPENAI_API_KEY`.
 
-### 2. Instagram Graph API (본인 계정 전용, 앱 리뷰 불필요)
-1. https://developers.facebook.com 에서 앱 생성 (유형: Business)
-2. 앱에 "Instagram" 제품 추가
-3. 인스타그램 계정을 Business/Creator 계정으로 전환하고, Facebook 페이지와 연결
-4. 앱이 Development mode인 상태에서, 앱 대시보드 > 역할(Roles) > Instagram Testers에 본인 계정 추가 후, 인스타그램 앱에서 초대 수락
-5. Graph API Explorer 등으로 장기 액세스 토큰 발급, 연결된 Instagram 비즈니스 계정 ID 확인
-6. `.env`의 `IG_ACCESS_TOKEN`, `IG_BUSINESS_ACCOUNT_ID`에 채우기
+### 2. Instagram API (Instagram Login 방식, 본인 계정 전용 - 앱 리뷰/페이지 연결 불필요)
+2024년 7월부터 생긴 방식으로, Facebook 페이지 연결 없이 Instagram 계정으로 바로 로그인해서 토큰을 받을 수 있다.
+1. 인스타그램 계정을 Business 또는 Creator 계정으로 전환 (페이지 연결은 필요 없음)
+2. https://developers.facebook.com 에서 앱 생성 (유형: Business)
+3. 앱 대시보드에서 "Instagram" 제품 추가 -> 왼쪽 메뉴에서 Instagram 펼쳐서 **"API setup with Instagram Login"** 선택
+4. 해당 페이지의 **"Generate access tokens"** 섹션에서 **"Add an Instagram Account"** 클릭 -> 본인 계정으로 로그인/권한 승인
+5. 승인하면 대시보드에 액세스 토큰이 바로 표시됨 (한 번만 보여주므로 즉시 복사)
+6. 같은 페이지 혹은 `https://graph.instagram.com/me?fields=id,username&access_token=<토큰>` 호출로 Instagram 계정 ID 확인
+7. `.env`의 `IG_ACCESS_TOKEN`, `IG_BUSINESS_ACCOUNT_ID`에 채우기
 
 > 본인 소유 계정에만 게시하는 용도라 Meta 앱 리뷰(수 주 소요)는 필요 없다. 다른 사람 계정까지 다루려는 경우에만 리뷰가 필요하다.
+> 장기 액세스 토큰은 60일마다 만료되므로, 만료 전에 갱신이 필요하다 (갱신 자동화는 별도 이슈로 추후 진행).
 
 ### 3. Telegram 봇
 1. Telegram에서 `@BotFather`에게 `/newbot`으로 봇 생성 -> 토큰 발급
