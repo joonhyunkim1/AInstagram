@@ -154,6 +154,20 @@ def insert_history(
     return cur.lastrowid
 
 
+def get_state(conn: sqlite3.Connection, key: str) -> Optional[str]:
+    row = conn.execute("SELECT value FROM kv_state WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO kv_state (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
 def recent_history(
     conn: sqlite3.Connection, category: Optional[str] = None, limit: int = 30
 ) -> list[HistoryEntry]:

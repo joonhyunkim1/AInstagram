@@ -41,6 +41,21 @@ def _build_context(conn: sqlite3.Connection, category: str, cfg: AppConfig) -> s
     return _build_knowledge_context(conn, cfg)
 
 
+def pick_next_category(conn: sqlite3.Connection, cfg: AppConfig) -> str:
+    """가장 최근에 다루지 않은 카테고리를 고르는 단순 라운드로빈."""
+    categories = cfg.content.categories
+    if len(categories) <= 1:
+        return categories[0]
+
+    history = repo.recent_history(conn, limit=1)
+    if not history:
+        return categories[0]
+
+    last_category = history[0].category
+    remaining = [cat for cat in categories if cat != last_category]
+    return remaining[0] if remaining else categories[0]
+
+
 def generate_candidates(
     conn: sqlite3.Connection,
     category: str,
