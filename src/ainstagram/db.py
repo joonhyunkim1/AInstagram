@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS queue (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kv_state (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS post_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     published_at TEXT NOT NULL,
