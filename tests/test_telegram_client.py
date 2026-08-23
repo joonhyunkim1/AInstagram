@@ -137,6 +137,53 @@ def test_send_media_group_mixes_urls_and_bytes():
     assert len(kwargs["files"]) == 1
 
 
+def test_send_media_group_retries_once_on_webpage_curl_failed(monkeypatch):
+    client, http = make_client()
+
+    responses = [
+        FakeResponse({"ok": False, "error_code": 400, "description": 'Bad Request: failed to send message #3 with the error message "WEBPAGE_CURL_FAILED"'}),
+        FakeResponse({"ok": True, "result": [{"message_id": 1}]}),
+    ]
+
+    def flaky_post(url, **kwargs):
+        http.calls.append(("POST", url, kwargs))
+        return responses.pop(0)
+
+    monkeypatch.setattr(http, "post", flaky_post)
+    monkeypatch.setattr("ainstagram.review.telegram_client.time.sleep", lambda _: None)
+
+    result = client.send_media_group(["https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg"])
+
+    assert result["ok"] is True
+    assert len(http.calls) == 2  # 1차 실패 + 재시도 1회
+
+
+def test_send_media_group_raises_after_retry_still_fails(monkeypatch):
+    client, http = make_client()
+
+    class AlwaysFailResponse(FakeResponse):
+        def raise_for_status(self):
+            raise Exception("still failing")
+
+    fail_response = AlwaysFailResponse(
+        {"ok": False, "error_code": 400, "description": 'failed with "WEBPAGE_CURL_FAILED"'}
+    )
+
+    def flaky_post(url, **kwargs):
+        http.calls.append(("POST", url, kwargs))
+        return fail_response
+
+    monkeypatch.setattr(http, "post", flaky_post)
+    monkeypatch.setattr("ainstagram.review.telegram_client.time.sleep", lambda _: None)
+
+    import pytest
+
+    with pytest.raises(Exception):
+        client.send_media_group(["https://cdn.example.com/1.jpg"])
+
+    assert len(http.calls) == 2  # 1차 시도 + 재시도 1회, 그 후엔 그냥 에러
+
+
 def test_get_file_path_returns_path_from_response():
     client, http = make_client()
     path = client.get_file_path("file-id-1")

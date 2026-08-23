@@ -76,9 +76,16 @@ def _render_and_store_images(
     return image_urls
 
 
-def _send_draft_preview(telegram: TelegramClient, draft: Draft) -> None:
-    """초안의 현재 상태(슬라이드 전체 + 캡션 + 채택/수정/폐기 버튼)를 전송한다."""
-    telegram.send_media_group(draft.image_urls or [])
+def _send_draft_preview(
+    telegram: TelegramClient, draft: Draft, media: list[bytes | str] | None = None
+) -> None:
+    """초안의 현재 상태(슬라이드 전체 + 캡션 + 채택/수정/폐기 버튼)를 전송한다.
+
+    media를 안 넘기면 draft.image_urls(R2 공개 URL)로 보낸다. 방금 막 R2에 올린 이미지는
+    Telegram이 아직 못 가져올 때가 있어서(WEBPAGE_CURL_FAILED), 막 만든 이미지가 섞여있는
+    호출부는 그 이미지의 바이트를 직접 media로 넘긴다.
+    """
+    telegram.send_media_group(media if media is not None else (draft.image_urls or []))
     caption = f"[{draft.category}] {draft.topic}\n\n{draft.caption}\n\n{len(draft.slides)} slides"
     buttons = [
         [
@@ -109,11 +116,24 @@ def send_drafts_for_review(
     pending = repo.list_pending_drafts(conn)
 
     for draft in pending:
-        image_urls = _render_and_store_images(
-            conn, draft, image_backend, storage_client, style, cfg.image.quality.final
+        images = composer.compose_slides(
+            draft.topic, draft.category, draft.slides, image_backend, cfg.image.quality.final, style
         )
+        image_urls = [
+            upload_image(storage_client, image, f"posts/{draft.id}/{i}.jpg")
+            for i, image in enumerate(images)
+        ]
+        repo.set_draft_images(conn, draft.id, image_urls)
         draft.image_urls = image_urls
-        _send_draft_preview(telegram, draft)
+
+        image_bytes_list = []
+        for image in images:
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG", quality=90)
+            image_bytes_list.append(buf.getvalue())
+        # 막 렌더링한 이미지라 R2 URL이 아니라 바이트를 직접 첨부한다 (Telegram이
+        # 외부 fetch를 아예 안 해도 되게)
+        _send_draft_preview(telegram, draft, media=image_bytes_list)
     return len(pending)
 
 
@@ -278,6 +298,9 @@ def _complete_add_image_ai(
         label,
     )
     url = upload_image(storage_client, image, f"posts/{draft.id}/{new_index}.jpg")
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=90)
+    new_image_bytes = buf.getvalue()
 
     slides = list(draft.slides) + [slide_text]
     image_urls = list(draft.image_urls or []) + [url]
@@ -287,7 +310,10 @@ def _complete_add_image_ai(
     draft.slides = slides
     draft.image_urls = image_urls
     telegram.send_message("이미지를 추가했습니다.")
-    _send_draft_preview(telegram, draft)
+    # 기존 이미지는 URL로, 방금 만든 이미지는 바이트로 직접 첨부 (막 올려서 Telegram이
+    # 아직 못 가져올 수 있어서)
+    media: list[bytes | str] = list(image_urls[:-1]) + [new_image_bytes]
+    _send_draft_preview(telegram, draft, media=media)
 
 
 def _complete_add_image_upload(
@@ -315,7 +341,8 @@ def _complete_add_image_upload(
     draft.slides = slides
     draft.image_urls = image_urls
     telegram.send_message("사진을 추가했습니다.")
-    _send_draft_preview(telegram, draft)
+    media: list[bytes | str] = list(image_urls[:-1]) + [file_bytes]
+    _send_draft_preview(telegram, draft, media=media)
 
 
 def _complete_edit_caption(
