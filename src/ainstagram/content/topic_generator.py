@@ -62,7 +62,7 @@ def generate_candidates(
     category: str,
     llm: LLM,
     count: int | None = None,
-    max_attempts: int = 3,
+    max_attempts: int = 5,
 ) -> list[dict[str, Any]]:
     """중복을 걸러낸 후보 목록을 반환한다 (아직 DB에 저장하지 않음).
 
@@ -70,10 +70,13 @@ def generate_candidates(
     것들은 제외한다 (한 주제가 계속 화제일 수 있으므로 일정 기간이 지나면 다시
     생성될 수 있게 하기 위함). 아직 검수 대기 중이거나 채택되어 대기열에 있는
     draft는 결론이 안 났으므로 기간 제한 없이 항상 비교 대상에 포함한다.
+
+    중복으로 걸러진 주제는 다음 시도의 컨텍스트에 "이미 제안했다가 제외된 주제"로
+    알려줘서, LLM이 같은 주제를 반복 제안하지 않고 다른 화제를 고르도록 유도한다.
     """
     cfg = get_config()
     count = count or cfg.review.draft_candidates
-    context = _build_context(conn, category, cfg)
+    base_context = _build_context(conn, category, cfg)
 
     since = (
         datetime.now(timezone.utc) - timedelta(days=cfg.content.dedup.window_days)
@@ -86,14 +89,23 @@ def generate_candidates(
     history_embeddings += [d.embedding for d in active if d.embedding]
 
     accepted: list[dict[str, Any]] = []
+    rejected_topics: list[str] = []
     attempts = 0
     while len(accepted) < count and attempts < max_attempts:
         attempts += 1
         need = count - len(accepted)
+        context = base_context
+        if rejected_topics:
+            context += (
+                "\n\nThe following topics were already proposed and rejected as duplicates "
+                "of recent or currently pending coverage - propose different topics instead:\n"
+                + "\n".join(f"- {t}" for t in rejected_topics)
+            )
         raw_candidates = llm.generate_topics(category, context, need)
         for cand in raw_candidates:
             embedding = llm.embed(f"{cand['topic']}\n{cand['caption']}")
             if dedup.is_duplicate(embedding, history_embeddings, cfg.content.dedup.similarity_threshold):
+                rejected_topics.append(cand["topic"])
                 continue
             cand = dict(cand)
             cand["embedding"] = embedding

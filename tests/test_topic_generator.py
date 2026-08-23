@@ -82,6 +82,48 @@ def test_generate_candidates_retries_on_duplicate_discarded_draft(tmp_path):
     assert result[0]["topic"] == "new"
 
 
+class ContextRecordingFakeLLM:
+    """호출마다 넘어온 context를 기록해서, 재시도 시 거절된 주제가 컨텍스트에
+    반영되는지 검증하는 데 쓴다."""
+
+    def __init__(self, batches, embeddings_by_key):
+        self.batches = list(batches)
+        self.embeddings_by_key = embeddings_by_key
+        self.contexts: list[str] = []
+
+    def generate_topics(self, category, context, count):
+        self.contexts.append(context)
+        return self.batches.pop(0)
+
+    def embed(self, text):
+        return self.embeddings_by_key[text]
+
+
+def test_generate_candidates_feeds_rejected_topics_back_into_retry_context(tmp_path):
+    conn = make_conn(tmp_path)
+    repo.insert_history(
+        conn, category=c.CATEGORY_NEWS, topic="old", caption="c", embedding=[1.0, 0.0, 0.0]
+    )
+
+    dup_cand = {"topic": "dup topic", "caption": "c1", "slides": ["s1"], "difficulty_level": None}
+    new_cand = {"topic": "new topic", "caption": "c2", "slides": ["s1"], "difficulty_level": None}
+    llm = ContextRecordingFakeLLM(
+        batches=[[dup_cand], [new_cand]],
+        embeddings_by_key={
+            "dup topic\nc1": [1.0, 0.0, 0.0],  # 기존 이력과 동일 -> 중복
+            "new topic\nc2": [0.0, 1.0, 0.0],
+        },
+    )
+
+    result = topic_generator.generate_candidates(conn, c.CATEGORY_NEWS, llm, count=1)
+
+    assert len(result) == 1
+    assert result[0]["topic"] == "new topic"
+    assert len(llm.contexts) == 2
+    assert "dup topic" not in llm.contexts[0]
+    assert "dup topic" in llm.contexts[1]  # 재시도 컨텍스트에 거절된 주제가 반영됨
+
+
 def test_generate_candidates_retries_on_duplicate_pending_draft(tmp_path):
     """검수 대기 중이거나 채택된(아직 발행/폐기 안 된) draft도 중복 비교 대상에
     포함되어야 한다 - 그렇지 않으면 같은 뉴스가 검수 대기 중에 또 생성된다."""
