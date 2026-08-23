@@ -554,9 +554,11 @@ def process_updates(
         elif action == ACTION_APPROVE:
             _approve_and_enqueue(conn, draft_id, image_backend, storage_client, cfg, priority=None)
             telegram.answer_callback_query(callback["id"], "채택 완료 - 대기열에 추가했습니다.")
+            telegram.send_message(f"✅ 채택 완료 - 대기열에 추가했습니다: {draft.topic}")
         elif action == ACTION_APPROVE_TOP:
             _approve_and_enqueue(conn, draft_id, image_backend, storage_client, cfg, priority=0)
             telegram.answer_callback_query(callback["id"], "최우선으로 채택했습니다.")
+            telegram.send_message(f"⬆️ 최우선으로 채택했습니다: {draft.topic}")
 
 
 def process_pending_reviews(

@@ -232,6 +232,7 @@ def test_process_pending_reviews_approve_enqueues_with_default_priority(tmp_path
     assert queued.draft_id == draft_id
     assert queued.priority == 100  # 큐가 비어있을 때 기본값
     assert len(queued.image_urls) == 3  # 슬라이드 3장 전부 업로드
+    assert "채택 완료" in telegram.messages[0][0]
 
 
 def test_process_pending_reviews_approve_top_uses_priority_zero(tmp_path, monkeypatch):
@@ -246,6 +247,7 @@ def test_process_pending_reviews_approve_top_uses_priority_zero(tmp_path, monkey
 
     queued = repo.next_in_queue(conn)
     assert queued.priority == 0
+    assert "최우선으로 채택" in telegram.messages[0][0]
 
 
 def test_process_pending_reviews_ignores_already_processed_draft(tmp_path):
