@@ -82,6 +82,30 @@ def test_generate_candidates_retries_on_duplicate_discarded_draft(tmp_path):
     assert result[0]["topic"] == "new"
 
 
+def test_generate_candidates_retries_on_duplicate_pending_draft(tmp_path):
+    """검수 대기 중이거나 채택된(아직 발행/폐기 안 된) draft도 중복 비교 대상에
+    포함되어야 한다 - 그렇지 않으면 같은 뉴스가 검수 대기 중에 또 생성된다."""
+    conn = make_conn(tmp_path)
+    repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="pending old", caption="c",
+        slides=["s1"], embedding=[1.0, 0.0, 0.0],
+    )  # status는 기본값 pending 그대로 둠 (아직 검수 안 함)
+
+    dup_cand = {"topic": "dup", "caption": "c1", "slides": ["s1"], "difficulty_level": None}
+    new_cand = {"topic": "new", "caption": "c2", "slides": ["s1"], "difficulty_level": None}
+    llm = FakeLLM(
+        batches=[[dup_cand], [new_cand]],
+        embeddings_by_key={
+            "dup\nc1": [1.0, 0.0, 0.0],  # 검수 대기 중인 draft와 동일 -> 중복
+            "new\nc2": [0.0, 1.0, 0.0],
+        },
+    )
+
+    result = topic_generator.generate_candidates(conn, c.CATEGORY_NEWS, llm, count=1)
+    assert len(result) == 1
+    assert result[0]["topic"] == "new"
+
+
 def test_generate_candidates_ignores_history_older_than_window_days(tmp_path):
     conn = make_conn(tmp_path)
     repo.insert_history(

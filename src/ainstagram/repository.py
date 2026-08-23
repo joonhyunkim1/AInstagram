@@ -258,3 +258,19 @@ def recent_discarded_drafts(
     query += " ORDER BY created_at DESC"
     rows = conn.execute(query, params).fetchall()
     return [Draft.from_row(r) for r in rows]
+
+
+def active_drafts(conn: sqlite3.Connection, category: Optional[str] = None) -> list[Draft]:
+    """아직 결론이 안 난(검수 대기 중이거나 채택되어 대기열에 있는) draft.
+
+    아직 발행도 폐기도 안 됐으므로 window_days와 상관없이 항상 중복 비교 대상에
+    포함해야 한다 - 그렇지 않으면 같은 뉴스가 검수 대기 중에 또 생성될 수 있다.
+    """
+    query = "SELECT * FROM drafts WHERE status IN (?, ?)"
+    params: list[Any] = [c.DRAFT_PENDING, c.DRAFT_APPROVED]
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY created_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    return [Draft.from_row(r) for r in rows]
