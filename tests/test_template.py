@@ -12,7 +12,7 @@ from ainstagram.images import template
 def test_render_thumbnail_matches_canvas_size():
     style = template.load_brand_style(get_config())
     bg = Image.new("RGB", (100, 100), color=(50, 50, 50))
-    img = template.render_thumbnail(bg, "GPT-5 출시로 달라지는 것들 총정리", "AI NEWS", style)
+    img = template.render_thumbnail(bg, "GPT-5 출시로 달라지는 것들 총정리", style)
     assert img.size == style.canvas_size
     assert img.mode == "RGB"
 
@@ -28,5 +28,5 @@ def test_render_thumbnail_wraps_long_topic_without_error():
     style = template.load_brand_style(get_config())
     bg = Image.new("RGB", (100, 100), color=(80, 80, 80))
     long_topic = "이것은 아주 길게 작성된 인스타그램 카드뉴스 썸네일용 주제 문구 테스트입니다 " * 3
-    img = template.render_thumbnail(bg, long_topic, "AI 지식", style)
+    img = template.render_thumbnail(bg, long_topic, style)
     assert img.size == style.canvas_size
