@@ -298,6 +298,34 @@ def test_process_pending_reviews_routes_queue_command(tmp_path):
     assert "주제A" in telegram.messages[0][0]
 
 
+def test_process_pending_reviews_discard_all_command_discards_only_pending(tmp_path):
+    conn = make_conn(tmp_path)
+    pending_id1 = make_draft(conn, "대기중1")
+    pending_id2 = make_draft(conn, "대기중2")
+    queued_id = make_draft(conn, "이미채택됨")
+    repo.approve_draft(conn, queued_id, priority=10)
+    repo.enqueue(conn, queued_id, "c", ["url1"], priority=10)
+
+    telegram = FakeTelegram([[message_update(1, "/discard_all")]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    assert repo.get_draft(conn, pending_id1).status == c.DRAFT_DISCARDED
+    assert repo.get_draft(conn, pending_id2).status == c.DRAFT_DISCARDED
+    assert repo.get_draft(conn, queued_id).status == c.DRAFT_APPROVED  # 이미 채택된 건 안 건드림
+    assert "2건" in telegram.messages[0][0]
+    assert "대기중1" in telegram.messages[0][0]
+    assert "대기중2" in telegram.messages[0][0]
+
+
+def test_process_pending_reviews_discard_all_command_when_nothing_pending(tmp_path):
+    conn = make_conn(tmp_path)
+    telegram = FakeTelegram([[message_update(1, "/discard_all")]])
+
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    assert telegram.messages[0][0] == "검수 대기 중인 초안이 없습니다."
+
+
 class FakeLLM:
     def __init__(self):
         self.calls = 0
@@ -328,6 +356,42 @@ def test_process_pending_reviews_generate_command_creates_and_sends_drafts(tmp_p
     assert len(telegram.media_groups) == 3
     assert any("생성" in text for text, _ in telegram.messages)
     assert any("생성 완료" in text for text, _ in telegram.messages)
+
+
+class PartialDuplicateFakeLLM:
+    """요청한 수보다 적게 통과하는 상황(대부분 중복)을 흉내내는 가짜 LLM."""
+
+    def __init__(self):
+        self.embed_calls = 0
+
+    def generate_topics(self, category, context, count):
+        return [
+            {"topic": f"주제-{count}-{i}", "caption": f"캡션-{count}-{i}", "slides": ["표지", "본문1"]}
+            for i in range(count)
+        ]
+
+    def embed(self, text):
+        self.embed_calls += 1
+        # 첫 번째만 새 임베딩, 나머지는 전부 기존 활성 draft와 동일 -> 중복 처리됨
+        return [0.0, 1.0] if self.embed_calls == 1 else [1.0, 0.0]
+
+
+def test_process_pending_reviews_generate_command_reports_partial_count(tmp_path, monkeypatch):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+    conn = make_conn(tmp_path)
+    repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="이미 대기 중인 주제", caption="c",
+        slides=["s1"], embedding=[1.0, 0.0],
+    )  # 아직 검수 안 한(pending) 활성 draft - 새 후보들과 계속 중복 처리됨
+
+    telegram = FakeTelegram([[message_update(1, "/generate")]])
+    llm = PartialDuplicateFakeLLM()
+
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client(), llm=llm)
+
+    assert any("1/3건" in text for text, _ in telegram.messages)
+    assert any("중복으로 제외" in text for text, _ in telegram.messages)
 
 
 def test_process_pending_reviews_queue_bump(tmp_path):

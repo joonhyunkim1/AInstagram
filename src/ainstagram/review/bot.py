@@ -44,6 +44,7 @@ ACTION_EDIT_CANCEL = "edit_cancel"
 
 QUEUE_COMMAND = "/queue"
 GENERATE_COMMAND = "/generate"
+DISCARD_ALL_COMMAND = "/discard_all"
 PENDING_ACTION_STATE_KEY = "pending_edit_action"
 
 
@@ -175,12 +176,32 @@ def _generate_new_drafts(
     storage_client: S3LikeClient,
     cfg: AppConfig,
     llm: LLM | None = None,
-) -> int:
-    """/generate 명령으로 예비 게시물 후보를 즉시 생성해서 검수 요청을 보낸다."""
+) -> tuple[int, int]:
+    """/generate 명령으로 예비 게시물 후보를 즉시 생성해서 검수 요청을 보낸다.
+
+    반환값: (실제로 생성된 건수, 요청한 건수) - 중복 등으로 목표 건수를 못 채울 수 있다.
+    """
     llm = llm or LLMClient.from_config()
     category = pick_next_category(conn, cfg)
-    generate_and_store_drafts(conn, category, llm)
-    return send_drafts_for_review(conn, telegram, image_backend, storage_client, cfg)
+    requested = cfg.review.draft_candidates
+    draft_ids = generate_and_store_drafts(conn, category, llm, count=requested)
+    send_drafts_for_review(conn, telegram, image_backend, storage_client, cfg)
+    return len(draft_ids), requested
+
+
+def _discard_all_pending(conn: sqlite3.Connection, telegram: TelegramClient) -> int:
+    """검수 대기 중인(pending) 초안을 한 번에 전부 폐기한다."""
+    pending = repo.list_pending_drafts(conn)
+    for draft in pending:
+        repo.discard_draft(conn, draft.id)
+
+    if not pending:
+        telegram.send_message("검수 대기 중인 초안이 없습니다.")
+        return 0
+
+    topics = "\n".join(f"- {d.topic}" for d in pending)
+    telegram.send_message(f"❌ {len(pending)}건 일괄 폐기했습니다.\n\n{topics}")
+    return len(pending)
 
 
 def send_queue_status(conn: sqlite3.Connection, telegram: TelegramClient) -> int:
@@ -473,12 +494,20 @@ def process_updates(
             if text == QUEUE_COMMAND:
                 send_queue_status(conn, telegram)
             elif text == GENERATE_COMMAND:
-                telegram.send_message("예비 게시물 3건을 생성하고 있습니다...")
-                sent = _generate_new_drafts(conn, telegram, image_backend, storage_client, cfg, llm)
-                if sent == 0:
+                telegram.send_message(f"예비 게시물 {cfg.review.draft_candidates}건을 생성하고 있습니다...")
+                created, requested = _generate_new_drafts(
+                    conn, telegram, image_backend, storage_client, cfg, llm
+                )
+                if created == 0:
                     telegram.send_message("생성된 초안이 없습니다 (중복으로 모두 걸러졌을 수 있습니다).")
+                elif created < requested:
+                    telegram.send_message(
+                        f"✅ 생성 완료 - {created}/{requested}건 (나머지는 중복으로 제외됨)"
+                    )
                 else:
-                    telegram.send_message(f"✅ 생성 완료 - {sent}건")
+                    telegram.send_message(f"✅ 생성 완료 - {created}건")
+            elif text == DISCARD_ALL_COMMAND:
+                _discard_all_pending(conn, telegram)
             continue
 
         callback = update.get("callback_query")
