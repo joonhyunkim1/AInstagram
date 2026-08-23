@@ -28,15 +28,15 @@ def test_fetch_recent_headlines(monkeypatch):
 
 def test_build_news_context_with_headlines(monkeypatch):
     def fake_parse(url):
-        return FakeParsed([FakeEntry(title="AI 관련 소식", summary="", link="")])
+        return FakeParsed([FakeEntry(title="OpenAI ships new model", summary="", link="")])
 
     monkeypatch.setattr(news_sources.feedparser, "parse", fake_parse)
 
     context = news_sources.build_news_context(["https://example.com/feed"])
-    assert "AI 관련 소식" in context
+    assert "OpenAI ships new model" in context
 
 
 def test_build_news_context_no_headlines(monkeypatch):
     monkeypatch.setattr(news_sources.feedparser, "parse", lambda url: FakeParsed([]))
     context = news_sources.build_news_context(["https://example.com/feed"])
-    assert "가져오지 못함" in context
+    assert "Could not fetch" in context

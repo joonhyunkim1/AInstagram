@@ -39,8 +39,10 @@ class DedupConfig:
 class ContentConfig:
     categories: list[str]
     topics: list[str]
+    language: str
     news_feeds: list[str]
     dedup: DedupConfig
+    fixed_hashtags: list[str]
 
 
 @dataclass
@@ -105,11 +107,13 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     content = ContentConfig(
         categories=raw["content"]["categories"],
         topics=raw["content"].get("topics", []),
+        language=raw["content"].get("language", "en"),
         news_feeds=raw["content"].get("news_feeds", []),
         dedup=DedupConfig(
             similarity_threshold=raw["content"]["dedup"]["similarity_threshold"],
             history_window=raw["content"]["dedup"]["history_window"],
         ),
+        fixed_hashtags=raw["content"].get("fixed_hashtags", []),
     )
     image = ImageConfig(
         text_model=raw["image"]["text_model"],

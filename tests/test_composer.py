@@ -33,4 +33,4 @@ def test_compose_slides_generates_one_background_per_slide():
 
 def test_build_background_prompt_excludes_text_instruction():
     prompt = composer.build_background_prompt("주제", "슬라이드 내용", is_thumbnail=True)
-    assert "텍스트" in prompt or "글자" in prompt
+    assert "text" in prompt or "lettering" in prompt

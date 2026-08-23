@@ -13,13 +13,28 @@ posting:
 content:
   categories: ["news", "knowledge"]
   topics: []                    # 세부 주제 미정 - 비어있으면 카테고리 안에서 LLM이 자유롭게 선정
-  news_feeds:                   # 무료 RSS - 필요하면 자유롭게 추가/삭제
+  language: "en"                # 게시물 본문 언어 - 더 넓은 시장을 노리기 위해 영어로 작성
+  news_feeds:                   # 무료 RSS, 전 세계 대상 최신 AI 뉴스 위주 - 필요하면 자유롭게 추가/삭제
     - "https://hnrss.org/newest?q=AI"
+    - "https://techcrunch.com/category/artificial-intelligence/feed/"
+    - "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+    - "https://venturebeat.com/category/ai/feed/"
+    - "https://www.technologyreview.com/topic/artificial-intelligence/feed"
     - "https://export.arxiv.org/rss/cs.AI"
-    - "https://www.artificialintelligence-news.com/feed/"
   dedup:
     similarity_threshold: 0.85   # 이 값 이상이면 과거 게시물과 중복으로 간주
     history_window: 30           # 최근 N개 게시물과 비교
+  fixed_hashtags:                # 매 게시물에 고정으로 붙는 태그 - AI 관련 노출이 잘 되는 태그 위주
+    - "AI"
+    - "ArtificialIntelligence"
+    - "MachineLearning"
+    - "TechNews"
+    - "AINews"
+    - "FutureTech"
+    - "Innovation"
+    - "DeepLearning"
+    - "TechTrends"
+    - "DataScience"
 
 image:
   text_model: "gpt-5-mini"       # 주제/스크립트 생성용

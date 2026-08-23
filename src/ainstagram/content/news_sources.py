@@ -22,6 +22,6 @@ def fetch_recent_headlines(feed_urls: list[str], limit_per_feed: int = 5) -> lis
 def build_news_context(feed_urls: list[str], limit_per_feed: int = 5) -> str:
     headlines = fetch_recent_headlines(feed_urls, limit_per_feed)
     if not headlines:
-        return "최근 헤드라인을 가져오지 못함 - 일반적인 최신 AI 트렌드 기준으로 작성."
+        return "Could not fetch recent headlines - write based on general recent AI trends."
     lines = [f"- {h['title']}" for h in headlines if h["title"]]
-    return "최근 AI 관련 헤드라인 목록:\n" + "\n".join(lines)
+    return "Recent global AI headlines:\n" + "\n".join(lines)

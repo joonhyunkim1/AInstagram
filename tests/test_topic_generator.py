@@ -65,6 +65,7 @@ def test_generate_and_store_drafts_persists_rows(tmp_path):
         "topic": "t1",
         "caption": "c1",
         "slides": ["s1", "s2"],
+        "hashtags": ["OpenAI", "GPT5"],
         "difficulty_level": 2,
     }
     llm = FakeLLM(batches=[[cand]], embeddings_by_key={"t1\nc1": [1.0, 0.0]})
@@ -78,16 +79,49 @@ def test_generate_and_store_drafts_persists_rows(tmp_path):
     assert draft.topic == "t1"
     assert draft.difficulty_level == 2
     assert draft.slides == ["s1", "s2"]
+    assert draft.caption.startswith("c1")
+    assert "#OpenAI" in draft.caption
+    assert "#GPT5" in draft.caption
+    assert "#AI" in draft.caption  # 고정 해시태그도 붙어야 함
+
+
+def test_generate_and_store_drafts_works_without_hashtags_field(tmp_path):
+    conn = make_conn(tmp_path)
+    cand = {"topic": "t1", "caption": "c1", "slides": ["s1"], "difficulty_level": None}
+    llm = FakeLLM(batches=[[cand]], embeddings_by_key={"t1\nc1": [1.0, 0.0]})
+
+    draft_ids = topic_generator.generate_and_store_drafts(conn, c.CATEGORY_NEWS, llm, count=1)
+
+    draft = repo.get_draft(conn, draft_ids[0])
+    assert draft.caption.startswith("c1")
+    assert "#AI" in draft.caption  # 고정 해시태그는 여전히 붙음
+
+
+def test_build_caption_with_hashtags_dedupes_case_insensitively():
+    caption = topic_generator.build_caption_with_hashtags(
+        "base caption",
+        dynamic_hashtags=["OpenAI", "ai"],
+        fixed_hashtags=["AI", "MachineLearning"],
+    )
+    assert caption.startswith("base caption")
+    assert caption.count("#") == 3  # OpenAI, ai(먼저 나온 형태 유지), MachineLearning
+    assert "#OpenAI" in caption
+    assert "#MachineLearning" in caption
+
+
+def test_build_caption_with_hashtags_no_tags_returns_caption_unchanged():
+    caption = topic_generator.build_caption_with_hashtags("base caption", [], [])
+    assert caption == "base caption"
 
 
 def test_build_knowledge_context_reflects_history(tmp_path):
     conn = make_conn(tmp_path)
     repo.insert_history(
-        conn, category=c.CATEGORY_KNOWLEDGE, topic="트랜스포머 기초", caption="c",
+        conn, category=c.CATEGORY_KNOWLEDGE, topic="Transformer basics", caption="c",
         difficulty_level=2, embedding=[0.1, 0.2],
     )
     from ainstagram.config import get_config
 
     context = topic_generator._build_knowledge_context(conn, get_config())
-    assert "트랜스포머 기초" in context
-    assert "난이도" in context
+    assert "Transformer basics" in context
+    assert "difficulty" in context
