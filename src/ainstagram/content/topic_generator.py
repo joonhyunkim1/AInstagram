@@ -68,7 +68,8 @@ def generate_candidates(
 
     발행된 주제뿐 아니라 폐기된 주제도 비교 대상에 포함하되, window_days가 지난
     것들은 제외한다 (한 주제가 계속 화제일 수 있으므로 일정 기간이 지나면 다시
-    생성될 수 있게 하기 위함).
+    생성될 수 있게 하기 위함). 아직 검수 대기 중이거나 채택되어 대기열에 있는
+    draft는 결론이 안 났으므로 기간 제한 없이 항상 비교 대상에 포함한다.
     """
     cfg = get_config()
     count = count or cfg.review.draft_candidates
@@ -79,8 +80,10 @@ def generate_candidates(
     ).isoformat()
     history = repo.recent_history(conn, category=category, limit=None, since=since)
     discarded = repo.recent_discarded_drafts(conn, category=category, since=since)
+    active = repo.active_drafts(conn, category=category)
     history_embeddings = [h.embedding for h in history if h.embedding]
     history_embeddings += [d.embedding for d in discarded if d.embedding]
+    history_embeddings += [d.embedding for d in active if d.embedding]
 
     accepted: list[dict[str, Any]] = []
     attempts = 0

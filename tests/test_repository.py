@@ -121,6 +121,24 @@ def test_recent_discarded_drafts_returns_only_discarded_within_window(tmp_path):
     assert [d.id for d in discarded] == [kept_id]
 
 
+def test_active_drafts_includes_pending_and_approved_only(tmp_path):
+    conn = make_conn(tmp_path)
+    pending_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="pending", caption="c", slides=[]
+    )
+    approved_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="approved", caption="c", slides=[]
+    )
+    repo.approve_draft(conn, approved_id, priority=10)
+    discarded_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="discarded", caption="c", slides=[]
+    )
+    repo.discard_draft(conn, discarded_id)
+
+    active = repo.active_drafts(conn, category=c.CATEGORY_NEWS)
+    assert {d.id for d in active} == {pending_id, approved_id}
+
+
 def test_list_queue_orders_by_priority(tmp_path):
     conn = make_conn(tmp_path)
     d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
