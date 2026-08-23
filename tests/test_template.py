@@ -30,3 +30,10 @@ def test_render_thumbnail_wraps_long_topic_without_error():
     long_topic = "이것은 아주 길게 작성된 인스타그램 카드뉴스 썸네일용 주제 문구 테스트입니다 " * 3
     img = template.render_thumbnail(bg, long_topic, style)
     assert img.size == style.canvas_size
+
+
+def test_sanitize_text_replaces_glyphs_missing_from_font():
+    assert template._sanitize_text("ten‑blue‑links") == "ten-blue-links"
+    assert template._sanitize_text("soft­hyphen") == "softhyphen"
+    assert template._sanitize_text("non breaking") == "non breaking"
+    assert template._sanitize_text("normal text") == "normal text"

@@ -48,6 +48,21 @@ def _load_font(path: str, size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default(size)
 
 
+_UNSUPPORTED_CHAR_REPLACEMENTS = {
+    "‑": "-",  # non-breaking hyphen - IBM Plex Sans KR에 글리프가 없어 네모 박스로 깨짐
+    "­": "",  # soft hyphen - 마찬가지로 글리프가 없고, 원래도 화면에 안 보여야 하는 문자
+    " ": " ",  # non-breaking space - 마찬가지로 글리프가 없음
+}
+
+
+def _sanitize_text(text: str) -> str:
+    """LLM이 생성한 텍스트에 폰트가 지원하지 않는 특수 문자가 섞여 있으면
+    렌더링 시 네모 박스(tofu box)로 깨지므로, 비슷한 일반 문자로 치환한다."""
+    for char, replacement in _UNSUPPORTED_CHAR_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    return text
+
+
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
     """줄 길이를 최대한 균등하게 나눈다.
 
@@ -168,6 +183,7 @@ OVERLAY_TOP_PADDING_RATIO = 0.045
 
 def render_thumbnail(background: Image.Image, topic: str, style: BrandStyle) -> Image.Image:
     """1번째 슬라이드: 후킹용 썸네일. 피드 통일감을 위해 항상 같은 레이아웃을 쓴다."""
+    topic = _sanitize_text(topic)
     w, h = style.canvas_size
     raw = background.resize(style.canvas_size).convert("RGBA")
     probe_draw = ImageDraw.Draw(raw)
@@ -197,6 +213,7 @@ def render_content_slide(
     background: Image.Image, text: str, index: int, total: int, style: BrandStyle
 ) -> Image.Image:
     """2번째 슬라이드부터: 본문. 페이지 번호 + 텍스트만 다르고 레이아웃은 썸네일과 통일."""
+    text = _sanitize_text(text)
     w, h = style.canvas_size
     raw = background.resize(style.canvas_size).convert("RGBA")
     probe_draw = ImageDraw.Draw(raw)
