@@ -219,15 +219,42 @@ def set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 
 def recent_history(
-    conn: sqlite3.Connection, category: Optional[str] = None, limit: int = 30
+    conn: sqlite3.Connection,
+    category: Optional[str] = None,
+    limit: Optional[int] = 30,
+    since: Optional[str] = None,
 ) -> list[HistoryEntry]:
+    query = "SELECT * FROM post_history"
+    conditions = []
+    params: list[Any] = []
     if category:
-        rows = conn.execute(
-            "SELECT * FROM post_history WHERE category = ? ORDER BY published_at DESC LIMIT ?",
-            (category, limit),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM post_history ORDER BY published_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+        conditions.append("category = ?")
+        params.append(category)
+    if since:
+        conditions.append("published_at >= ?")
+        params.append(since)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY published_at DESC"
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(query, params).fetchall()
     return [HistoryEntry.from_row(r) for r in rows]
+
+
+def recent_discarded_drafts(
+    conn: sqlite3.Connection, category: Optional[str] = None, since: Optional[str] = None
+) -> list[Draft]:
+    """중복 생성 방지용: 폐기된 draft도 최근 것이면 dedup 비교 대상에 포함한다."""
+    query = "SELECT * FROM drafts WHERE status = ?"
+    params: list[Any] = [c.DRAFT_DISCARDED]
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    if since:
+        query += " AND created_at >= ?"
+        params.append(since)
+    query += " ORDER BY created_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    return [Draft.from_row(r) for r in rows]

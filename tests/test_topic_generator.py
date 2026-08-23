@@ -59,6 +59,59 @@ def test_generate_candidates_retries_on_duplicate(tmp_path):
     assert result[0]["topic"] == "new"
 
 
+def test_generate_candidates_retries_on_duplicate_discarded_draft(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="old", caption="c",
+        slides=["s1"], embedding=[1.0, 0.0, 0.0],
+    )
+    repo.discard_draft(conn, draft_id)
+
+    dup_cand = {"topic": "dup", "caption": "c1", "slides": ["s1"], "difficulty_level": None}
+    new_cand = {"topic": "new", "caption": "c2", "slides": ["s1"], "difficulty_level": None}
+    llm = FakeLLM(
+        batches=[[dup_cand], [new_cand]],
+        embeddings_by_key={
+            "dup\nc1": [1.0, 0.0, 0.0],  # 폐기된 draft와 동일 -> 중복
+            "new\nc2": [0.0, 1.0, 0.0],
+        },
+    )
+
+    result = topic_generator.generate_candidates(conn, c.CATEGORY_NEWS, llm, count=1)
+    assert len(result) == 1
+    assert result[0]["topic"] == "new"
+
+
+def test_generate_candidates_ignores_history_older_than_window_days(tmp_path):
+    conn = make_conn(tmp_path)
+    repo.insert_history(
+        conn, category=c.CATEGORY_NEWS, topic="old", caption="c", embedding=[1.0, 0.0, 0.0]
+    )
+    draft_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="old_discarded", caption="c",
+        slides=["s1"], embedding=[0.0, 0.0, 1.0],
+    )
+    repo.discard_draft(conn, draft_id)
+    # window_days(기본 7일)보다 오래된 것처럼 타임스탬프를 과거로 되돌려서
+    # 다시 생성될 수 있는지 확인한다.
+    conn.execute("UPDATE post_history SET published_at = ?", ("2000-01-01T00:00:00+00:00",))
+    conn.execute("UPDATE drafts SET created_at = ?", ("2000-01-01T00:00:00+00:00",))
+    conn.commit()
+
+    dup_cand = {"topic": "dup", "caption": "c1", "slides": ["s1"], "difficulty_level": None}
+    discarded_dup_cand = {"topic": "dup2", "caption": "c2", "slides": ["s1"], "difficulty_level": None}
+    llm = FakeLLM(
+        batches=[[dup_cand, discarded_dup_cand]],
+        embeddings_by_key={
+            "dup\nc1": [1.0, 0.0, 0.0],
+            "dup2\nc2": [0.0, 0.0, 1.0],
+        },
+    )
+
+    result = topic_generator.generate_candidates(conn, c.CATEGORY_NEWS, llm, count=2)
+    assert {r["topic"] for r in result} == {"dup", "dup2"}
+
+
 def test_generate_and_store_drafts_persists_rows(tmp_path):
     conn = make_conn(tmp_path)
     cand = {

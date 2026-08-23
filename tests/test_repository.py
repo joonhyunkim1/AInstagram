@@ -88,6 +88,39 @@ def test_history_recent(tmp_path):
     assert history[0].embedding == [0.1, 0.2]
 
 
+def test_recent_history_since_filters_out_old_entries(tmp_path):
+    conn = make_conn(tmp_path)
+    repo.insert_history(conn, category=c.CATEGORY_NEWS, topic="old news", caption="c")
+    conn.execute("UPDATE post_history SET published_at = ?", ("2000-01-01T00:00:00+00:00",))
+    conn.commit()
+
+    assert repo.recent_history(conn, category=c.CATEGORY_NEWS, since="2020-01-01T00:00:00+00:00") == []
+    assert len(repo.recent_history(conn, category=c.CATEGORY_NEWS)) == 1
+
+
+def test_recent_discarded_drafts_returns_only_discarded_within_window(tmp_path):
+    conn = make_conn(tmp_path)
+    kept_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="discarded recent", caption="c",
+        slides=[], embedding=[0.1, 0.2],
+    )
+    repo.discard_draft(conn, kept_id)
+
+    old_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="discarded old", caption="c", slides=[]
+    )
+    repo.discard_draft(conn, old_id)
+    conn.execute("UPDATE drafts SET created_at = ? WHERE id = ?", ("2000-01-01T00:00:00+00:00", old_id))
+
+    pending_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="still pending", caption="c", slides=[]
+    )
+    conn.commit()
+
+    discarded = repo.recent_discarded_drafts(conn, category=c.CATEGORY_NEWS, since="2020-01-01T00:00:00+00:00")
+    assert [d.id for d in discarded] == [kept_id]
+
+
 def test_list_queue_orders_by_priority(tmp_path):
     conn = make_conn(tmp_path)
     d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])

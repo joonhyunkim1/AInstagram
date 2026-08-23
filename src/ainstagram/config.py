@@ -33,6 +33,7 @@ class PostingConfig:
 class DedupConfig:
     similarity_threshold: float
     history_window: int
+    window_days: int
 
 
 @dataclass
@@ -112,6 +113,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
         dedup=DedupConfig(
             similarity_threshold=raw["content"]["dedup"]["similarity_threshold"],
             history_window=raw["content"]["dedup"]["history_window"],
+            window_days=raw["content"]["dedup"].get("window_days", 7),
         ),
         fixed_hashtags=raw["content"].get("fixed_hashtags", []),
     )
