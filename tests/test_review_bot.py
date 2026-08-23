@@ -33,10 +33,15 @@ class FakeTelegram:
     def __init__(self, update_batches=None):
         self.update_batches = list(update_batches or [])
         self.sent = []
+        self.messages = []
         self.answered = []
 
     def send_photo_with_buttons(self, image_bytes, caption, buttons):
         self.sent.append((caption, buttons))
+        return {"ok": True}
+
+    def send_message(self, text, buttons=None):
+        self.messages.append((text, buttons))
         return {"ok": True}
 
     def get_updates(self, offset=None):
@@ -63,6 +68,10 @@ def callback_update(update_id, action, draft_id, callback_id="cb-1"):
         "update_id": update_id,
         "callback_query": {"id": callback_id, "data": f"{action}:{draft_id}"},
     }
+
+
+def message_update(update_id, text):
+    return {"update_id": update_id, "message": {"text": text}}
 
 
 def test_send_drafts_for_review_sends_one_preview_per_pending_draft(tmp_path):
@@ -140,3 +149,74 @@ def test_process_pending_reviews_ignores_already_processed_draft(tmp_path):
     bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
 
     assert telegram.answered[0][1] == "이미 처리된 초안입니다."
+
+
+def test_send_queue_status_empty(tmp_path):
+    conn = make_conn(tmp_path)
+    telegram = FakeTelegram()
+
+    count = bot.send_queue_status(conn, telegram)
+
+    assert count == 0
+    assert telegram.messages == [("현재 대기열이 비어있습니다.", None)]
+
+
+def test_send_queue_status_lists_items_in_order(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = make_draft(conn, "주제A")
+    d2 = make_draft(conn, "주제B")
+    repo.enqueue(conn, d1, "c1", ["url1"], priority=50)
+    q2 = repo.enqueue(conn, d2, "c2", ["url2"], priority=10)
+
+    telegram = FakeTelegram()
+    count = bot.send_queue_status(conn, telegram)
+
+    assert count == 2
+    first_text, first_buttons = telegram.messages[0]
+    assert "주제B" in first_text  # 우선순위 낮은 게 먼저
+    assert {b["callback_data"].split(":")[0] for b in first_buttons} == {
+        bot.ACTION_QUEUE_BUMP,
+        bot.ACTION_QUEUE_REMOVE,
+    }
+    assert first_buttons[0]["callback_data"] == f"{bot.ACTION_QUEUE_BUMP}:{q2}"
+
+
+def test_process_pending_reviews_routes_queue_command(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = make_draft(conn, "주제A")
+    repo.enqueue(conn, d1, "c1", ["url1"], priority=10)
+
+    telegram = FakeTelegram([[message_update(1, "/queue")]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    assert len(telegram.messages) == 1
+    assert "주제A" in telegram.messages[0][0]
+
+
+def test_process_pending_reviews_queue_bump(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = make_draft(conn, "주제A")
+    d2 = make_draft(conn, "주제B")
+    repo.enqueue(conn, d1, "c1", ["url1"], priority=10)
+    q2 = repo.enqueue(conn, d2, "c2", ["url2"], priority=20)
+
+    telegram = FakeTelegram([[callback_update(1, bot.ACTION_QUEUE_BUMP, q2)]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    items = repo.list_queue(conn)
+    assert items[0].id == q2
+    assert telegram.answered[0][1] == "대기열 맨 앞으로 옮겼습니다."
+
+
+def test_process_pending_reviews_queue_remove(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = make_draft(conn, "주제A")
+    q1 = repo.enqueue(conn, d1, "c1", ["url1"], priority=10)
+
+    telegram = FakeTelegram([[callback_update(1, bot.ACTION_QUEUE_REMOVE, q1)]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    assert repo.list_queue(conn) == []
+    draft = repo.get_draft(conn, d1)
+    assert draft.status == c.DRAFT_DISCARDED
+    assert telegram.answered[0][1] == "대기열에서 제거했습니다."

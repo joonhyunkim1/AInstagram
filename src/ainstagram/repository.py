@@ -123,6 +123,35 @@ def set_priority(conn: sqlite3.Connection, queue_id: int, priority: int) -> None
     conn.commit()
 
 
+def list_queue(conn: sqlite3.Connection) -> list[QueueItem]:
+    rows = conn.execute(
+        "SELECT * FROM queue WHERE status = ? ORDER BY priority ASC, created_at ASC",
+        (c.QUEUE_QUEUED,),
+    ).fetchall()
+    return [QueueItem.from_row(r) for r in rows]
+
+
+def bump_to_front(conn: sqlite3.Connection, queue_id: int) -> None:
+    """지정한 대기열 항목을 맨 앞으로 옮긴다 (숫자가 작을수록 먼저 게시)."""
+    row = conn.execute(
+        "SELECT MIN(priority) AS min_priority FROM queue WHERE status = ? AND id != ?",
+        (c.QUEUE_QUEUED, queue_id),
+    ).fetchone()
+    min_priority = row["min_priority"]
+    new_priority = (min_priority - 10) if min_priority is not None else 0
+    set_priority(conn, queue_id, new_priority)
+
+
+def cancel_queue_item(conn: sqlite3.Connection, queue_id: int) -> None:
+    """대기열에서 빼고, 연결된 초안은 폐기 상태로 되돌린다."""
+    row = conn.execute("SELECT draft_id FROM queue WHERE id = ?", (queue_id,)).fetchone()
+    if row is None:
+        return
+    conn.execute("DELETE FROM queue WHERE id = ?", (queue_id,))
+    conn.execute("UPDATE drafts SET status = ? WHERE id = ?", (c.DRAFT_DISCARDED, row["draft_id"]))
+    conn.commit()
+
+
 # ---- post_history ----
 
 def insert_history(
