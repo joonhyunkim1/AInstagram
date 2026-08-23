@@ -7,8 +7,8 @@ posting:
   timezone: "Asia/Seoul"
   times: ["07:00", "12:00", "18:00", "23:00"]
   images_per_post:
-    min: 5
-    max: 7
+    min: 2
+    max: 6                        # 내용에 맞게 이 범위 안에서 LLM이 알아서 슬라이드 수를 정함
 
 content:
   categories: ["news", "knowledge"]
