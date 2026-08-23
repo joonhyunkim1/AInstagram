@@ -17,7 +17,11 @@ def make_conn(tmp_path):
 
 
 class FakeImageBackend:
+    def __init__(self):
+        self.call_count = 0
+
     def generate_background(self, prompt, quality, size="1024x1024"):
+        self.call_count += 1
         return Image.new("RGB", (64, 64), color=(100, 100, 100))
 
 
@@ -33,11 +37,16 @@ class FakeTelegram:
     def __init__(self, update_batches=None):
         self.update_batches = list(update_batches or [])
         self.sent = []
+        self.media_groups = []
         self.messages = []
         self.answered = []
 
     def send_photo_with_buttons(self, image_bytes, caption, buttons):
         self.sent.append((caption, buttons))
+        return {"ok": True}
+
+    def send_media_group(self, images):
+        self.media_groups.append(images)
         return {"ok": True}
 
     def send_message(self, text, buttons=None):
@@ -74,23 +83,54 @@ def message_update(update_id, text):
     return {"update_id": update_id, "message": {"text": text}}
 
 
-def test_send_drafts_for_review_sends_one_preview_per_pending_draft(tmp_path):
+def test_send_drafts_for_review_sends_full_slide_album_per_pending_draft(tmp_path, monkeypatch):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+
     conn = make_conn(tmp_path)
-    make_draft(conn, "주제1")
+    d1 = make_draft(conn, "주제1")
     make_draft(conn, "주제2")
 
     telegram = FakeTelegram()
-    sent_count = bot.send_drafts_for_review(conn, telegram, FakeImageBackend())
+    sent_count = bot.send_drafts_for_review(conn, telegram, FakeImageBackend(), FakeS3Client())
 
     assert sent_count == 2
-    assert len(telegram.sent) == 2
-    caption, buttons = telegram.sent[0]
+    assert len(telegram.media_groups) == 2
+    assert len(telegram.media_groups[0]) == 3  # 슬라이드 3장 전부 앨범으로 전송
+    assert len(telegram.messages) == 2
+
+    caption, buttons = telegram.messages[0]
     assert "주제" in caption
     assert {b["callback_data"].split(":")[0] for b in buttons} == {
         bot.ACTION_APPROVE,
         bot.ACTION_APPROVE_TOP,
         bot.ACTION_DISCARD,
     }
+
+    draft = repo.get_draft(conn, d1)
+    assert draft.image_urls is not None
+    assert len(draft.image_urls) == 3
+
+
+def test_approve_reuses_images_rendered_during_review(tmp_path, monkeypatch):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+
+    conn = make_conn(tmp_path)
+    make_draft(conn, "주제1")
+
+    image_backend = FakeImageBackend()
+    telegram = FakeTelegram()
+    bot.send_drafts_for_review(conn, telegram, image_backend, FakeS3Client())
+    calls_after_review = image_backend.call_count
+    assert calls_after_review > 0
+
+    draft_id = repo.list_pending_drafts(conn)[0].id
+    telegram2 = FakeTelegram([[callback_update(1, bot.ACTION_APPROVE, draft_id)]])
+    bot.process_pending_reviews(conn, telegram2, image_backend, FakeS3Client())
+
+    # 채택 시 검수 단계에서 만든 이미지를 재사용해야 하므로, 배경 생성 호출이 늘어나지 않아야 함
+    assert image_backend.call_count == calls_after_review
 
 
 def test_process_pending_reviews_discard(tmp_path):

@@ -40,6 +40,28 @@ class TelegramClient:
         response.raise_for_status()
         return response.json()
 
+    def send_media_group(self, images: list[bytes]) -> dict:
+        """슬라이드 전체를 하나의 앨범(캐러셀 미리보기)으로 전송한다.
+
+        Telegram sendMediaGroup은 개별 아이템에 버튼을 못 붙이기 때문에,
+        채택/폐기 버튼은 뒤이어 send_message로 별도 전송해야 한다.
+        """
+        media = []
+        files = {}
+        for i, image_bytes in enumerate(images):
+            name = f"photo{i}"
+            media.append({"type": "photo", "media": f"attach://{name}"})
+            files[name] = (f"{name}.jpg", image_bytes, "image/jpeg")
+
+        response = self._http.post(
+            f"{self._base_url}/sendMediaGroup",
+            data={"chat_id": self.chat_id, "media": json.dumps(media)},
+            files=files,
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def send_message(self, text: str, buttons: list[dict[str, str]] | None = None) -> dict:
         payload: dict[str, Any] = {"chat_id": self.chat_id, "text": text}
         if buttons:

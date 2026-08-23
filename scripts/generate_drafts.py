@@ -9,6 +9,7 @@ from ainstagram.content.llm_client import LLMClient
 from ainstagram.content.topic_generator import generate_and_store_drafts, pick_next_category
 from ainstagram.db import get_connection
 from ainstagram.images.ai_background import OpenAIImageBackend
+from ainstagram.images.storage import get_r2_client
 from ainstagram.review.bot import send_drafts_for_review
 from ainstagram.review.telegram_client import TelegramClient
 
@@ -24,7 +25,8 @@ def main() -> None:
 
     telegram = TelegramClient.from_env()
     image_backend = OpenAIImageBackend.from_config()
-    sent = send_drafts_for_review(conn, telegram, image_backend, cfg)
+    storage_client = get_r2_client()
+    sent = send_drafts_for_review(conn, telegram, image_backend, storage_client, cfg)
     print(f"검수 요청 전송: {sent}건")
 
 
