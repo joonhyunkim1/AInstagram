@@ -145,6 +145,22 @@ def test_send_drafts_for_review_sends_full_slide_album_per_pending_draft(tmp_pat
     assert len(draft.image_urls) == 3
 
 
+def test_send_drafts_for_review_skips_drafts_already_sent(tmp_path, monkeypatch):
+    """검수 요청까지 보내고 아직 응답을 안 받은 예전 초안은, 다시 호출해도
+    또 렌더링하거나 다시 전송하지 않아야 한다 (비용/중복 메시지 방지)."""
+    conn, already_sent_id = make_ready_draft(tmp_path, monkeypatch)
+    image_backend = FakeImageBackend()
+    new_id = make_draft(conn, "새 주제")
+
+    telegram = FakeTelegram()
+    sent_count = bot.send_drafts_for_review(conn, telegram, image_backend, FakeS3Client())
+
+    assert sent_count == 1
+    assert image_backend.call_count == 3  # 새 초안(슬라이드 3장)만 새로 만듦
+    assert len(telegram.messages) == 1
+    assert "새 주제" in telegram.messages[0][0]
+
+
 def test_approve_reuses_images_rendered_during_review(tmp_path, monkeypatch):
     monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
     monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
