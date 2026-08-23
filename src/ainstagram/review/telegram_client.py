@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Protocol
 
 Buttons = list[list[dict[str, str]]]
@@ -73,8 +74,14 @@ class TelegramClient:
             kwargs["files"] = files
 
         response = self._http.post(f"{self._base_url}/sendMediaGroup", **kwargs)
+        data = response.json()
+        if not data.get("ok") and "WEBPAGE_CURL_FAILED" in data.get("description", ""):
+            # R2에 막 올라간 URL을 Telegram이 아직 못 가져오는 경우가 있어서, 잠깐 쉬었다 한 번 더 시도
+            time.sleep(2)
+            response = self._http.post(f"{self._base_url}/sendMediaGroup", **kwargs)
+            data = response.json()
         response.raise_for_status()
-        return response.json()
+        return data
 
     def send_message(self, text: str, buttons: Buttons | None = None) -> dict:
         payload: dict[str, Any] = {"chat_id": self.chat_id, "text": text}
