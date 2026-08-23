@@ -1,0 +1,13 @@
+name = "ainstagram-webhook"
+main = "webhook.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+GITHUB_OWNER = "joonhyunkim1"
+GITHUB_REPO = "AInstagram"
+GITHUB_WORKFLOW_FILE = "poll_reviews.yml"
+GITHUB_REF = "main"
+
+# 아래 두 개는 여기 평문으로 넣지 않고 시크릿으로 등록한다:
+#   wrangler secret put GITHUB_TOKEN
+#   wrangler secret put TELEGRAM_WEBHOOK_SECRET

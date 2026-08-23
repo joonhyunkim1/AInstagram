@@ -9,7 +9,7 @@ AI 관련 소식/지식을 카드뉴스 형태로 정리해 인스타그램에 �
 [매일 1회] 카테고리 선택(뉴스/지식 라운드로빈) -> 예비 게시물 3개 생성
               -> Telegram으로 썸네일 미리보기 전송 (채택 / 최우선 채택 / 폐기 버튼)
                                     |
-                     [10분마다] 버튼 응답 폴링
+        [10분마다 폴링, 또는 Cloudflare Worker 웹훅으로 즉시] 버튼 응답 처리
                                     |
                 채택 시: 5~7장 풀세트 이미지 생성 -> Cloudflare R2 업로드 -> 대기열 추가
                                     |
@@ -73,6 +73,39 @@ Instagram Graph API는 이미지를 공개 URL로 가져오기 때문에 어딘�
 2. R2 API 토큰 발급 (계정 ID, Access Key ID, Secret Access Key)
 3. `.env`의 `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_BASE_URL`에 채우기
 
+### 5. Telegram 웹훅용 Cloudflare Worker (선택 - 즉시 응답)
+기본값(스케줄 폴링)은 버튼을 눌러도 최대 10분까지 반응이 늦을 수 있다. 이 Worker를 배포하면 클릭 즉시(수 초~수십 초) 처리된다. 안 하셔도 스케줄 폴링만으로 계속 동작한다.
+
+**1) GitHub PAT 발급** (Worker가 검수 폴링 워크플로우를 즉시 실행시키는 데 필요)
+1. https://github.com/settings/tokens?type=beta 에서 Fine-grained token 생성
+2. Repository access를 이 저장소(AInstagram) 하나로 제한
+3. Permissions > Actions: **Read and write**
+4. 생성된 토큰 복사 (한 번만 보여줌)
+
+**2) Worker 배포**
+```bash
+cd worker
+npx wrangler login          # 브라우저로 Cloudflare 계정 인증
+npx wrangler secret put GITHUB_TOKEN               # 위에서 발급한 PAT 붙여넣기
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET     # 아무 랜덤 문자열이나 직접 정해서 입력 (예: openssl rand -hex 20)
+npx wrangler deploy
+```
+배포가 끝나면 `https://ainstagram-webhook.<계정서브도메인>.workers.dev` 같은 URL이 나온다.
+
+**3) Telegram에 웹훅 등록** (아래 값 채워서 실행)
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -d "url=<위에서 나온 Worker URL>" \
+  -d "secret_token=<2번에서 정한 TELEGRAM_WEBHOOK_SECRET>"
+```
+`{"ok":true,...}` 응답이 오면 완료. 이제 버튼을 누르면 몇 초 안에 처리된다.
+
+**되돌리기(웹훅 끄고 다시 폴링만 쓰기)**
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/deleteWebhook"
+```
+코드를 건드릴 필요 없이 이 호출 한 번이면 기존 10분 스케줄 폴링이 다시 정상 동작한다.
+
 ## GitHub Secrets 등록
 
 로컬 `.env`에 채운 값을 그대로 저장소 Secrets에도 등록해야 Actions 워크플로우가 동작한다.
@@ -104,4 +137,5 @@ src/ainstagram/
   publish/            # Instagram Graph API 발행
 scripts/              # GitHub Actions에서 호출하는 진입점
 .github/workflows/    # cron 스케줄
+worker/               # Telegram 웹훅 수신용 Cloudflare Worker (선택, 즉시 응답용)
 ```

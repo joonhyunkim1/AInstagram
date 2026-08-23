@@ -180,6 +180,22 @@ def test_process_pending_reviews_discard(tmp_path):
     assert telegram.answered[0][1] == "폐기했습니다."
 
 
+def test_process_updates_handles_single_update_directly(tmp_path):
+    """웹훅 경로(scripts/poll_reviews.py)가 하는 것처럼, get_updates/offset 없이
+    업데이트 하나를 바로 process_updates에 넘겨도 동일하게 처리되어야 한다."""
+    conn = make_conn(tmp_path)
+    draft_id = make_draft(conn)
+    telegram = FakeTelegram()
+
+    bot.process_updates(
+        conn, [callback_update(1, bot.ACTION_DISCARD, draft_id)], telegram, FakeImageBackend(), FakeS3Client()
+    )
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.status == c.DRAFT_DISCARDED
+    assert telegram.answered[0][1] == "폐기했습니다."
+
+
 def test_process_pending_reviews_approve_enqueues_with_default_priority(tmp_path, monkeypatch):
     monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
     monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")

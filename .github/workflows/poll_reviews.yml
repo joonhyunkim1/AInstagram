@@ -2,8 +2,13 @@ name: 검수 폴링
 
 on:
   schedule:
-    - cron: "*/10 * * * *"  # 10분마다
-  workflow_dispatch: {}
+    - cron: "*/10 * * * *"  # 10분마다 - 웹훅이 켜져 있으면 이 실행은 사실상 아무 일도 안 하는 안전장치
+  workflow_dispatch:
+    inputs:
+      telegram_update:
+        description: "Cloudflare Worker가 넘겨주는 Telegram Update JSON 문자열 (웹훅 경로에서만 사용)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -37,6 +42,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          TELEGRAM_UPDATE_JSON: ${{ github.event.inputs.telegram_update }}
 
       - name: DB 변경사항 커밋
         run: |

@@ -421,22 +421,23 @@ def _handle_edit_menu_action(
         _set_pending_action(conn, None)
 
 
-def process_pending_reviews(
+def process_updates(
     conn: sqlite3.Connection,
+    updates: list[dict[str, Any]],
     telegram: TelegramClient,
     image_backend: ImageBackend,
     storage_client: S3LikeClient,
-    last_update_id: int | None = None,
     cfg: AppConfig | None = None,
-) -> int:
-    """콜백/메시지 큐를 처리하고, 다음 폴링에 쓸 update_id 오프셋을 반환한다."""
+) -> None:
+    """이미 확보한 업데이트 목록을 처리한다.
+
+    getUpdates 폴링(process_pending_reviews)뿐 아니라, Telegram 웹훅으로 즉시 들어온
+    업데이트 하나를 처리하는 경로(scripts/poll_reviews.py의 TELEGRAM_UPDATE_JSON)에서도
+    이 함수를 그대로 재사용한다.
+    """
     cfg = cfg or get_config()
-    updates: list[dict[str, Any]] = telegram.get_updates(offset=last_update_id)
 
-    next_offset = last_update_id or 0
     for update in updates:
-        next_offset = max(next_offset, update["update_id"] + 1)
-
         message = update.get("message")
         if message:
             pending = _get_pending_action(conn)
@@ -497,4 +498,26 @@ def process_pending_reviews(
             _approve_and_enqueue(conn, draft_id, image_backend, storage_client, cfg, priority=0)
             telegram.answer_callback_query(callback["id"], "최우선으로 채택했습니다.")
 
+
+def process_pending_reviews(
+    conn: sqlite3.Connection,
+    telegram: TelegramClient,
+    image_backend: ImageBackend,
+    storage_client: S3LikeClient,
+    last_update_id: int | None = None,
+    cfg: AppConfig | None = None,
+) -> int:
+    """getUpdates로 폴링해서 처리하고, 다음 폴링에 쓸 update_id 오프셋을 반환한다.
+
+    Telegram 웹훅이 활성화되어 있으면 get_updates는 항상 빈 리스트를 반환하므로
+    (TelegramClient가 409를 조용히 무시함), 이 경우 이 함수는 사실상 아무 일도 안 한다.
+    """
+    cfg = cfg or get_config()
+    updates: list[dict[str, Any]] = telegram.get_updates(offset=last_update_id)
+
+    next_offset = last_update_id or 0
+    for update in updates:
+        next_offset = max(next_offset, update["update_id"] + 1)
+
+    process_updates(conn, updates, telegram, image_backend, storage_client, cfg)
     return next_offset
