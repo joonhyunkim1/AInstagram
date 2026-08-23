@@ -1,10 +1,10 @@
 """초안 검수 + 대기열 관리 흐름.
 
-1) send_drafts_for_review: pending 상태인 초안들의 썸네일 미리보기(저품질)를 Telegram으로 전송
+1) send_drafts_for_review: pending 상태인 초안들의 슬라이드 전체(실제 게시될 최종 품질)를
+   렌더링해서 Telegram 앨범으로 전송. 이때 만든 이미지는 draft에 저장해둔다.
 2) process_pending_reviews: getUpdates를 폴링해서 버튼 응답(채택/우선채택/폐기) 및
    /queue 명령어(대기열 조회/최우선으로/제거)를 처리
-   - 채택 시에만 그 초안을 실제 품질로 풀세트 렌더링해서 R2에 올리고 대기열에 넣는다
-     (검수 단계에서는 후보 3개 다 풀세트로 만들지 않아 이미지 생성 비용을 아낀다)
+   - 채택 시 draft에 저장된 이미지를 그대로 재사용해서 대기열에 넣는다 (다시 만들지 않음)
 """
 from __future__ import annotations
 
@@ -29,35 +29,65 @@ ACTION_QUEUE_REMOVE = "queue_remove"
 QUEUE_COMMAND = "/queue"
 
 
+def _render_and_store_images(
+    conn: sqlite3.Connection,
+    draft,
+    image_backend: ImageBackend,
+    storage_client: S3LikeClient,
+    style: template.BrandStyle,
+    quality: str,
+) -> list[str]:
+    images = composer.compose_slides(
+        draft.topic, draft.category, draft.slides, image_backend, quality, style
+    )
+    image_urls = [
+        upload_image(storage_client, image, f"posts/{draft.id}/{i}.jpg")
+        for i, image in enumerate(images)
+    ]
+    repo.set_draft_images(conn, draft.id, image_urls)
+    return image_urls
+
+
 def send_drafts_for_review(
     conn: sqlite3.Connection,
     telegram: TelegramClient,
     image_backend: ImageBackend,
+    storage_client: S3LikeClient,
     cfg: AppConfig | None = None,
 ) -> int:
-    """pending 초안들의 미리보기를 전송한다. 전송한 개수를 반환."""
+    """pending 초안들의 전체 슬라이드(실제 게시될 최종 품질)를 렌더링해서 앨범으로 전송한다.
+
+    여기서 만든 이미지를 draft에 저장해두기 때문에, 채택 시 다시 만들지 않는다.
+    """
     cfg = cfg or get_config()
     style = template.load_brand_style(cfg)
     pending = repo.list_pending_drafts(conn)
 
     sent = 0
     for draft in pending:
-        hook_text = draft.slides[0] if draft.slides else draft.topic
-        prompt = composer.build_background_prompt(draft.topic, hook_text, is_thumbnail=True)
-        background = image_backend.generate_background(prompt, cfg.image.quality.draft_preview)
-        label = composer.CATEGORY_LABELS.get(draft.category, draft.category.upper())
-        preview = template.render_thumbnail(background, draft.topic, label, style)
+        images = composer.compose_slides(
+            draft.topic, draft.category, draft.slides, image_backend, cfg.image.quality.final, style
+        )
+        image_urls = [
+            upload_image(storage_client, image, f"posts/{draft.id}/{i}.jpg")
+            for i, image in enumerate(images)
+        ]
+        repo.set_draft_images(conn, draft.id, image_urls)
 
-        buf = io.BytesIO()
-        preview.save(buf, format="JPEG", quality=85)
+        image_bytes_list = []
+        for image in images:
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG", quality=90)
+            image_bytes_list.append(buf.getvalue())
+        telegram.send_media_group(image_bytes_list)
 
-        caption = f"[{draft.category}] {draft.topic}\n\n{draft.caption}\n\n슬라이드 {len(draft.slides)}장"
+        caption = f"[{draft.category}] {draft.topic}\n\n{draft.caption}\n\n{len(draft.slides)} slides"
         buttons = [
             {"text": "✅ 채택", "callback_data": f"{ACTION_APPROVE}:{draft.id}"},
             {"text": "⬆️ 최우선 채택", "callback_data": f"{ACTION_APPROVE_TOP}:{draft.id}"},
             {"text": "❌ 폐기", "callback_data": f"{ACTION_DISCARD}:{draft.id}"},
         ]
-        telegram.send_photo_with_buttons(buf.getvalue(), caption, buttons)
+        telegram.send_message(caption, buttons)
         sent += 1
     return sent
 
@@ -74,14 +104,13 @@ def _approve_and_enqueue(
     if draft is None:
         return
 
-    style = template.load_brand_style(cfg)
-    images = composer.compose_slides(
-        draft.topic, draft.category, draft.slides, image_backend, cfg.image.quality.final, style
-    )
-    image_urls = [
-        upload_image(storage_client, image, f"posts/{draft_id}/{i}.jpg")
-        for i, image in enumerate(images)
-    ]
+    image_urls = draft.image_urls
+    if not image_urls:
+        # 안전장치: 검수 단계에서 이미지가 저장되지 않은 경우에만 새로 렌더링한다
+        style = template.load_brand_style(cfg)
+        image_urls = _render_and_store_images(
+            conn, draft, image_backend, storage_client, style, cfg.image.quality.final
+        )
 
     final_priority = priority if priority is not None else repo.next_queue_priority(conn)
     repo.approve_draft(conn, draft_id, priority=final_priority)

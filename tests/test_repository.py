@@ -36,6 +36,19 @@ def test_draft_lifecycle(tmp_path):
     assert draft.priority == 1
 
 
+def test_set_draft_images_persists_urls(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=["s1"]
+    )
+    assert repo.get_draft(conn, draft_id).image_urls is None
+
+    repo.set_draft_images(conn, draft_id, ["url1", "url2"])
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.image_urls == ["url1", "url2"]
+
+
 def test_discard_draft(tmp_path):
     conn = make_conn(tmp_path)
     draft_id = repo.create_draft(

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS drafts (
     caption TEXT NOT NULL,
     slides_json TEXT NOT NULL,
     thumbnail_url TEXT,
+    image_urls_json TEXT,
     embedding_json TEXT,
     difficulty_level INTEGER,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -59,4 +60,15 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _apply_migrations(conn)
     return conn
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """CREATE TABLE IF NOT EXISTS는 이미 만들어진 테이블에 새 컬럼을 추가해주지 않는다.
+    저장소에 커밋된 기존 DB 파일에도 안전하게 적용되도록 여기서 직접 처리한다.
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(drafts)")}
+    if "image_urls_json" not in columns:
+        conn.execute("ALTER TABLE drafts ADD COLUMN image_urls_json TEXT")
+        conn.commit()

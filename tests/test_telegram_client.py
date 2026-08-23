@@ -82,3 +82,20 @@ def test_send_message_with_buttons_includes_reply_markup():
 
     _, _, kwargs = http.calls[0]
     assert "queue_remove:1" in kwargs["data"]["reply_markup"]
+
+
+def test_send_media_group_attaches_each_image():
+    client, http = make_client()
+    client.send_media_group([b"img1", b"img2", b"img3"])
+
+    method, url, kwargs = http.calls[0]
+    assert method == "POST"
+    assert url.endswith("/sendMediaGroup")
+    assert kwargs["data"]["chat_id"] == "123"
+    assert len(kwargs["files"]) == 3
+    import json
+
+    media = json.loads(kwargs["data"]["media"])
+    assert len(media) == 3
+    assert all(m["type"] == "photo" for m in media)
+    assert media[0]["media"] == "attach://photo0"

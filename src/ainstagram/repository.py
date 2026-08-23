@@ -60,6 +60,14 @@ def get_draft(conn: sqlite3.Connection, draft_id: int) -> Optional[Draft]:
     return Draft.from_row(row) if row else None
 
 
+def set_draft_images(conn: sqlite3.Connection, draft_id: int, image_urls: list[str]) -> None:
+    conn.execute(
+        "UPDATE drafts SET image_urls_json = ? WHERE id = ?",
+        (json.dumps(image_urls), draft_id),
+    )
+    conn.commit()
+
+
 def discard_draft(conn: sqlite3.Connection, draft_id: int) -> None:
     conn.execute("UPDATE drafts SET status = ? WHERE id = ?", (c.DRAFT_DISCARDED, draft_id))
     conn.commit()
