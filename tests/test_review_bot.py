@@ -327,6 +327,7 @@ def test_process_pending_reviews_generate_command_creates_and_sends_drafts(tmp_p
     assert len(pending) == 3
     assert len(telegram.media_groups) == 3
     assert any("생성" in text for text, _ in telegram.messages)
+    assert any("생성 완료" in text for text, _ in telegram.messages)
 
 
 def test_process_pending_reviews_queue_bump(tmp_path):

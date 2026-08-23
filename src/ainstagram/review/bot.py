@@ -477,6 +477,8 @@ def process_updates(
                 sent = _generate_new_drafts(conn, telegram, image_backend, storage_client, cfg, llm)
                 if sent == 0:
                     telegram.send_message("생성된 초안이 없습니다 (중복으로 모두 걸러졌을 수 있습니다).")
+                else:
+                    telegram.send_message(f"✅ 생성 완료 - {sent}건")
             continue
 
         callback = update.get("callback_query")
