@@ -6,7 +6,7 @@ from PIL import Image
 from .. import constants as c
 from ..config import get_config
 from . import template
-from .ai_background import ImageBackend
+from .ai_background import ImageBackend, ImageGenerationBlocked
 
 CATEGORY_LABELS = {
     c.CATEGORY_NEWS: "AI NEWS",
@@ -17,8 +17,30 @@ CATEGORY_LABELS = {
 def build_background_prompt(topic: str, slide_text: str, is_thumbnail: bool) -> str:
     role = "cover" if is_thumbnail else "body"
     return (
-        f"Background illustration for an Instagram carousel {role} slide. Minimal flat design, "
-        f"subtle gradient, absolutely no text or lettering. Topic: {topic}. Scene related to: {slide_text}"
+        f"Photorealistic editorial photograph for an Instagram carousel {role} slide, shot to grab "
+        f"attention - striking composition, dramatic lighting, or a bold close-up angle, like the "
+        f"photo a major news outlet would pick to make people stop scrolling. Real-world scene, "
+        f"realistic textures and depth of field - not an illustration, not a cartoon, not flat "
+        f"design, not a 3D render. Do NOT depict people, faces, or portraits.\n"
+        f"Read this slide's specific point below and photograph the single most concrete, distinctive, "
+        f"visually striking detail in it (a specific object, symbol, screen content, place, or "
+        f"consequence), so that someone could guess what this slide is about just by looking at the "
+        f"image. Do NOT default to a generic laptop-with-a-chart shot or a generic office/tech stock "
+        f"photo. Absolutely no text or lettering anywhere in the image.\n"
+        f"Overall topic: {topic}\n"
+        f"This slide's specific point - make the image about THIS, not the general topic: {slide_text}"
+    )
+
+
+def build_fallback_background_prompt(topic: str, is_thumbnail: bool) -> str:
+    """1차 프롬프트가 안전 필터에 막혔을 때 쓰는, 훨씬 중립적인 대체 프롬프트."""
+    role = "cover" if is_thumbnail else "body"
+    return (
+        f"Photorealistic editorial photograph for an Instagram carousel {role} slide about the "
+        f"general topic of {topic}. Neutral, safe-for-work, real-world tech/business scene - a "
+        f"relevant object, device, or environment, shot with realistic lighting and depth of field. "
+        f"Not an illustration, not a cartoon, not flat design. Do NOT depict people, faces, or "
+        f"portraits. Absolutely no text or lettering anywhere in the image."
     )
 
 
@@ -37,7 +59,12 @@ def compose_slides(
     for i, text in enumerate(slides):
         is_thumbnail = i == 0
         prompt = build_background_prompt(topic, text, is_thumbnail)
-        background = backend.generate_background(prompt, quality)
+        try:
+            background = backend.generate_background(prompt, quality)
+        except ImageGenerationBlocked:
+            # 특정 슬라이드 내용이 안전 필터에 걸리면, 훨씬 중립적인 대체 프롬프트로 재시도한다
+            fallback_prompt = build_fallback_background_prompt(topic, is_thumbnail)
+            background = backend.generate_background(fallback_prompt, quality)
         if is_thumbnail:
             image = template.render_thumbnail(background, topic, label, style)
         else:
