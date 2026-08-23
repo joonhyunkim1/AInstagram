@@ -166,9 +166,7 @@ SIDE_MARGIN_RATIO = 0.06
 OVERLAY_TOP_PADDING_RATIO = 0.045
 
 
-def render_thumbnail(
-    background: Image.Image, topic: str, category_label: str, style: BrandStyle
-) -> Image.Image:
+def render_thumbnail(background: Image.Image, topic: str, style: BrandStyle) -> Image.Image:
     """1번째 슬라이드: 후킹용 썸네일. 피드 통일감을 위해 항상 같은 레이아웃을 쓴다."""
     w, h = style.canvas_size
     raw = background.resize(style.canvas_size).convert("RGBA")
@@ -189,19 +187,6 @@ def render_thumbnail(
     overlay_top = start_y - int(h * OVERLAY_TOP_PADDING_RATIO)
     canvas = _with_dark_overlay(raw, style.overlay_opacity, overlay_top)
     draw = ImageDraw.Draw(canvas)
-
-    tag_font = _load_font(style.font_bold_path, int(h * 0.032))
-    tag_text = category_label.upper()
-    tag_padding = int(h * 0.018)
-    tag_w = draw.textlength(tag_text, font=tag_font) + tag_padding * 2
-    tag_h = int(h * 0.032) + tag_padding
-    tag_x, tag_y = int(w * 0.06), int(h * 0.06)
-    draw.rounded_rectangle(
-        [tag_x, tag_y, tag_x + tag_w, tag_y + tag_h], radius=tag_h // 2, fill=style.primary_color
-    )
-    draw.text(
-        (tag_x + tag_padding, tag_y + tag_padding // 2), tag_text, font=tag_font, fill=(255, 255, 255)
-    )
 
     _draw_lines(draw, lines, line_height, start_y, int(w * SIDE_MARGIN_RATIO), title_font, (255, 255, 255))
     _draw_accent_bar(draw, style.canvas_size, style.primary_color)
