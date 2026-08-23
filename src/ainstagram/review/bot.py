@@ -20,6 +20,8 @@ from PIL import Image
 from .. import constants as c
 from .. import repository as repo
 from ..config import AppConfig, get_config
+from ..content.llm_client import LLMClient
+from ..content.topic_generator import LLM, generate_and_store_drafts, pick_next_category
 from ..images import composer, template
 from ..images.ai_background import ImageBackend
 from ..images.storage import S3LikeClient, upload_image
@@ -41,6 +43,7 @@ ACTION_EDIT_CAPTION = "edit_caption"
 ACTION_EDIT_CANCEL = "edit_cancel"
 
 QUEUE_COMMAND = "/queue"
+GENERATE_COMMAND = "/generate"
 PENDING_ACTION_STATE_KEY = "pending_edit_action"
 
 
@@ -160,6 +163,21 @@ def _approve_and_enqueue(
     final_priority = priority if priority is not None else repo.next_queue_priority(conn)
     repo.approve_draft(conn, draft_id, priority=final_priority)
     repo.enqueue(conn, draft_id, draft.caption, image_urls, priority=final_priority)
+
+
+def _generate_new_drafts(
+    conn: sqlite3.Connection,
+    telegram: TelegramClient,
+    image_backend: ImageBackend,
+    storage_client: S3LikeClient,
+    cfg: AppConfig,
+    llm: LLM | None = None,
+) -> int:
+    """/generate 명령으로 예비 게시물 후보를 즉시 생성해서 검수 요청을 보낸다."""
+    llm = llm or LLMClient.from_config()
+    category = pick_next_category(conn, cfg)
+    generate_and_store_drafts(conn, category, llm)
+    return send_drafts_for_review(conn, telegram, image_backend, storage_client, cfg)
 
 
 def send_queue_status(conn: sqlite3.Connection, telegram: TelegramClient) -> int:
@@ -428,6 +446,7 @@ def process_updates(
     image_backend: ImageBackend,
     storage_client: S3LikeClient,
     cfg: AppConfig | None = None,
+    llm: LLM | None = None,
 ) -> None:
     """이미 확보한 업데이트 목록을 처리한다.
 
@@ -447,8 +466,14 @@ def process_updates(
                     conn, telegram, image_backend, storage_client, cfg, pending, message
                 )
                 continue
-            if message.get("text", "").strip() == QUEUE_COMMAND:
+            text = message.get("text", "").strip()
+            if text == QUEUE_COMMAND:
                 send_queue_status(conn, telegram)
+            elif text == GENERATE_COMMAND:
+                telegram.send_message("예비 게시물 3건을 생성하고 있습니다...")
+                sent = _generate_new_drafts(conn, telegram, image_backend, storage_client, cfg, llm)
+                if sent == 0:
+                    telegram.send_message("생성된 초안이 없습니다 (중복으로 모두 걸러졌을 수 있습니다).")
             continue
 
         callback = update.get("callback_query")
@@ -506,6 +531,7 @@ def process_pending_reviews(
     storage_client: S3LikeClient,
     last_update_id: int | None = None,
     cfg: AppConfig | None = None,
+    llm: LLM | None = None,
 ) -> int:
     """getUpdates로 폴링해서 처리하고, 다음 폴링에 쓸 update_id 오프셋을 반환한다.
 
@@ -519,5 +545,5 @@ def process_pending_reviews(
     for update in updates:
         next_offset = max(next_offset, update["update_id"] + 1)
 
-    process_updates(conn, updates, telegram, image_backend, storage_client, cfg)
+    process_updates(conn, updates, telegram, image_backend, storage_client, cfg, llm)
     return next_offset
