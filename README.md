@@ -88,6 +88,7 @@ cd worker
 npx wrangler login          # 브라우저로 Cloudflare 계정 인증
 npx wrangler secret put GITHUB_TOKEN               # 위에서 발급한 PAT 붙여넣기
 npx wrangler secret put TELEGRAM_WEBHOOK_SECRET     # 아무 랜덤 문자열이나 직접 정해서 입력 (예: openssl rand -hex 20)
+npx wrangler secret put TELEGRAM_BOT_TOKEN          # .env의 TELEGRAM_BOT_TOKEN과 동일한 값 (버튼 클릭 즉시 응답용)
 npx wrangler deploy
 ```
 배포가 끝나면 `https://ainstagram-webhook.<계정서브도메인>.workers.dev` 같은 URL이 나온다.
