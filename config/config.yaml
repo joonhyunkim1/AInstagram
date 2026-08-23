@@ -40,10 +40,10 @@ content:
 image:
   text_model: "gpt-5-mini"       # 주제/스크립트 생성용
   embedding_model: "text-embedding-3-small"
-  image_model: "gpt-image-1-mini"  # 필요 시 gpt-image-1 / gpt-image-2로 교체
+  image_model: "gpt-image-2"  # 필요 시 gpt-image-1 / gpt-image-1-mini로 교체
   quality:
     draft_preview: "low"          # 검수용 썸네일 미리보기
-    final: "medium"                # 채택 후 실제 업로드용
+    final: "low"                # 채택 후 실제 업로드용 (gpt-image-2 테스트 중 - 원래는 medium)
   thumbnail_style: "TBD"          # 피드 통일용 썸네일 스타일 (색/폰트/레이아웃) - 추후 확정
   font:
     regular: "assets/fonts/IBMPlexSansKR-Regular.ttf"
