@@ -279,6 +279,37 @@ def test_process_pending_reviews_routes_queue_command(tmp_path):
     assert "주제A" in telegram.messages[0][0]
 
 
+class FakeLLM:
+    def __init__(self):
+        self.calls = 0
+
+    def generate_topics(self, category, context, count):
+        self.calls += 1
+        return [
+            {"topic": f"생성된 주제{i}", "caption": f"캡션{i}", "slides": ["표지", "본문1"]}
+            for i in range(count)
+        ]
+
+    def embed(self, text):
+        return [0.0, 0.0]
+
+
+def test_process_pending_reviews_generate_command_creates_and_sends_drafts(tmp_path, monkeypatch):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+    conn = make_conn(tmp_path)
+    telegram = FakeTelegram([[message_update(1, "/generate")]])
+    llm = FakeLLM()
+
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client(), llm=llm)
+
+    assert llm.calls >= 1
+    pending = repo.list_pending_drafts(conn)
+    assert len(pending) == 3
+    assert len(telegram.media_groups) == 3
+    assert any("생성" in text for text, _ in telegram.messages)
+
+
 def test_process_pending_reviews_queue_bump(tmp_path):
     conn = make_conn(tmp_path)
     d1 = make_draft(conn, "주제A")
