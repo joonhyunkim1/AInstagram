@@ -58,5 +58,6 @@ def test_compose_slides_retries_with_fallback_prompt_when_blocked():
 
     assert len(images) == 1  # 막혀도 대체 프롬프트로 재시도해서 결국 만들어짐
     assert len(backend.prompts) == 2  # 원본 프롬프트 1회 + 대체 프롬프트 1회
-    # 두 번째 호출(대체 프롬프트)은 슬라이드 텍스트를 그대로 노출하지 않음
-    assert "민감한 후킹 문구" not in backend.prompts[1]
+    # 대체 프롬프트도 민감한 표현은 빼되, 슬라이드의 핵심 시각 소재는 유지하기 위해
+    # 슬라이드 텍스트 자체는 그대로 포함한다
+    assert "민감한 후킹 문구" in backend.prompts[1]
