@@ -1,7 +1,8 @@
-"""초안 검수 흐름.
+"""초안 검수 + 대기열 관리 흐름.
 
 1) send_drafts_for_review: pending 상태인 초안들의 썸네일 미리보기(저품질)를 Telegram으로 전송
-2) process_pending_reviews: getUpdates를 폴링해서 버튼 응답(채택/우선채택/폐기) 처리
+2) process_pending_reviews: getUpdates를 폴링해서 버튼 응답(채택/우선채택/폐기) 및
+   /queue 명령어(대기열 조회/최우선으로/제거)를 처리
    - 채택 시에만 그 초안을 실제 품질로 풀세트 렌더링해서 R2에 올리고 대기열에 넣는다
      (검수 단계에서는 후보 3개 다 풀세트로 만들지 않아 이미지 생성 비용을 아낀다)
 """
@@ -22,6 +23,10 @@ from .telegram_client import TelegramClient
 ACTION_APPROVE = "approve"
 ACTION_APPROVE_TOP = "approve_top"
 ACTION_DISCARD = "discard"
+ACTION_QUEUE_BUMP = "queue_bump"
+ACTION_QUEUE_REMOVE = "queue_remove"
+
+QUEUE_COMMAND = "/queue"
 
 
 def send_drafts_for_review(
@@ -83,6 +88,41 @@ def _approve_and_enqueue(
     repo.enqueue(conn, draft_id, draft.caption, image_urls, priority=final_priority)
 
 
+def send_queue_status(conn: sqlite3.Connection, telegram: TelegramClient) -> int:
+    """현재 대기열을 순서대로 전송하고, 항목별로 최우선/제거 버튼을 붙인다."""
+    items = repo.list_queue(conn)
+    if not items:
+        telegram.send_message("현재 대기열이 비어있습니다.")
+        return 0
+
+    for position, item in enumerate(items, start=1):
+        draft = repo.get_draft(conn, item.draft_id)
+        topic = draft.topic if draft else "(주제 정보 없음)"
+        category = draft.category if draft else "?"
+        text = f"{position}번째 게시 예정\n[{category}] {topic}\n우선순위 값: {item.priority}"
+        buttons = [
+            {"text": "⬆️ 최우선으로", "callback_data": f"{ACTION_QUEUE_BUMP}:{item.id}"},
+            {"text": "❌ 대기열에서 제거", "callback_data": f"{ACTION_QUEUE_REMOVE}:{item.id}"},
+        ]
+        telegram.send_message(text, buttons)
+    return len(items)
+
+
+def _handle_queue_action(
+    conn: sqlite3.Connection, telegram: TelegramClient, callback: dict, action: str, queue_id_raw: str
+) -> None:
+    if not queue_id_raw.isdigit():
+        return
+    queue_id = int(queue_id_raw)
+
+    if action == ACTION_QUEUE_BUMP:
+        repo.bump_to_front(conn, queue_id)
+        telegram.answer_callback_query(callback["id"], "대기열 맨 앞으로 옮겼습니다.")
+    elif action == ACTION_QUEUE_REMOVE:
+        repo.cancel_queue_item(conn, queue_id)
+        telegram.answer_callback_query(callback["id"], "대기열에서 제거했습니다.")
+
+
 def process_pending_reviews(
     conn: sqlite3.Connection,
     telegram: TelegramClient,
@@ -99,11 +139,22 @@ def process_pending_reviews(
     for update in updates:
         next_offset = max(next_offset, update["update_id"] + 1)
 
+        message = update.get("message")
+        if message and message.get("text", "").strip() == QUEUE_COMMAND:
+            send_queue_status(conn, telegram)
+            continue
+
         callback = update.get("callback_query")
         if not callback:
             continue
 
-        action, _, draft_id_raw = callback.get("data", "").partition(":")
+        action, _, payload = callback.get("data", "").partition(":")
+
+        if action in (ACTION_QUEUE_BUMP, ACTION_QUEUE_REMOVE):
+            _handle_queue_action(conn, telegram, callback, action, payload)
+            continue
+
+        draft_id_raw = payload
         if not draft_id_raw.isdigit():
             continue
         draft_id = int(draft_id_raw)

@@ -64,3 +64,21 @@ def test_answer_callback_query_posts_expected_payload():
     method, url, kwargs = http.calls[0]
     assert url.endswith("/answerCallbackQuery")
     assert kwargs["data"] == {"callback_query_id": "cb-1", "text": "완료"}
+
+
+def test_send_message_without_buttons():
+    client, http = make_client()
+    client.send_message("안내 메시지")
+
+    method, url, kwargs = http.calls[0]
+    assert method == "POST"
+    assert url.endswith("/sendMessage")
+    assert kwargs["data"] == {"chat_id": "123", "text": "안내 메시지"}
+
+
+def test_send_message_with_buttons_includes_reply_markup():
+    client, http = make_client()
+    client.send_message("선택하세요", [{"text": "제거", "callback_data": "queue_remove:1"}])
+
+    _, _, kwargs = http.calls[0]
+    assert "queue_remove:1" in kwargs["data"]["reply_markup"]

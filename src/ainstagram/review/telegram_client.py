@@ -40,6 +40,14 @@ class TelegramClient:
         response.raise_for_status()
         return response.json()
 
+    def send_message(self, text: str, buttons: list[dict[str, str]] | None = None) -> dict:
+        payload: dict[str, Any] = {"chat_id": self.chat_id, "text": text}
+        if buttons:
+            payload["reply_markup"] = json.dumps({"inline_keyboard": [buttons]})
+        response = self._http.post(f"{self._base_url}/sendMessage", data=payload, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
     def get_updates(self, offset: int | None = None) -> list[dict]:
         params: dict[str, Any] = {"timeout": 0}
         if offset is not None:

@@ -73,3 +73,60 @@ def test_history_recent(tmp_path):
     assert len(history) == 1
     assert history[0].topic == "old news"
     assert history[0].embedding == [0.1, 0.2]
+
+
+def test_list_queue_orders_by_priority(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
+    d2 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t2", caption="c2", slides=[])
+
+    q1 = repo.enqueue(conn, d1, "c1", ["url1"], priority=50)
+    q2 = repo.enqueue(conn, d2, "c2", ["url2"], priority=10)
+
+    items = repo.list_queue(conn)
+    assert [i.id for i in items] == [q2, q1]
+
+
+def test_list_queue_excludes_published(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
+    q1 = repo.enqueue(conn, d1, "c1", ["url1"], priority=10)
+    repo.mark_queue_item_published(conn, q1)
+
+    assert repo.list_queue(conn) == []
+
+
+def test_bump_to_front_with_existing_items(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
+    d2 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t2", caption="c2", slides=[])
+    repo.enqueue(conn, d1, "c1", ["url1"], priority=10)
+    q2 = repo.enqueue(conn, d2, "c2", ["url2"], priority=20)
+
+    repo.bump_to_front(conn, q2)
+
+    items = repo.list_queue(conn)
+    assert items[0].id == q2
+
+
+def test_bump_to_front_on_empty_queue_defaults_to_zero(tmp_path):
+    conn = make_conn(tmp_path)
+    d1 = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
+    q1 = repo.enqueue(conn, d1, "c1", ["url1"], priority=100)
+
+    repo.bump_to_front(conn, q1)
+
+    items = repo.list_queue(conn)
+    assert items[0].priority == 0
+
+
+def test_cancel_queue_item_removes_and_discards_draft(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = repo.create_draft(conn, category=c.CATEGORY_NEWS, topic="t1", caption="c1", slides=[])
+    queue_id = repo.enqueue(conn, draft_id, "c1", ["url1"], priority=10)
+
+    repo.cancel_queue_item(conn, queue_id)
+
+    assert repo.list_queue(conn) == []
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.status == c.DRAFT_DISCARDED
