@@ -186,6 +186,19 @@ def test_build_caption_with_hashtags_dedupes_case_insensitively():
     assert "#MachineLearning" in caption
 
 
+def test_build_caption_with_hashtags_caps_at_seven():
+    caption = topic_generator.build_caption_with_hashtags(
+        "base caption",
+        dynamic_hashtags=["Tag1", "Tag2", "Tag3"],
+        fixed_hashtags=["F1", "F2", "F3", "F4", "F5", "F6", "F7"],
+    )
+    assert caption.count("#") == 7
+    # 동적 태그가 우선 채워지고, 남는 자리(4개)는 고정 태그 앞쪽부터 채워짐
+    assert "#Tag1" in caption and "#Tag2" in caption and "#Tag3" in caption
+    assert "#F1" in caption and "#F4" in caption
+    assert "#F5" not in caption
+
+
 def test_build_caption_with_hashtags_no_tags_returns_caption_unchanged():
     caption = topic_generator.build_caption_with_hashtags("base caption", [], [])
     assert caption == "base caption"

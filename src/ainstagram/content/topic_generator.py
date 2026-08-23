@@ -104,13 +104,22 @@ def generate_candidates(
     return accepted
 
 
+MAX_HASHTAGS = 7
+
+
 def build_caption_with_hashtags(
     base_caption: str, dynamic_hashtags: list[str], fixed_hashtags: list[str]
 ) -> str:
-    """동적(주제별) 해시태그를 앞에, 고정 해시태그를 뒤에 붙인다. 중복은 한 번만 남긴다."""
+    """동적(주제별) 해시태그를 앞에, 고정 해시태그를 뒤에 붙인다.
+
+    중복은 한 번만 남기고, 총 개수는 MAX_HASHTAGS를 넘지 않도록 자른다
+    (동적 태그가 더 주제에 맞으므로 우선 채우고 남는 자리를 고정 태그로 채움).
+    """
     seen: set[str] = set()
     ordered_tags: list[str] = []
     for tag in [*dynamic_hashtags, *fixed_hashtags]:
+        if len(ordered_tags) >= MAX_HASHTAGS:
+            break
         normalized = tag.lstrip("#").replace(" ", "")
         if not normalized or normalized.lower() in seen:
             continue
