@@ -4,6 +4,7 @@ drafts 테이블에 저장한다.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from .. import constants as c
@@ -63,13 +64,23 @@ def generate_candidates(
     count: int | None = None,
     max_attempts: int = 3,
 ) -> list[dict[str, Any]]:
-    """중복을 걸러낸 후보 목록을 반환한다 (아직 DB에 저장하지 않음)."""
+    """중복을 걸러낸 후보 목록을 반환한다 (아직 DB에 저장하지 않음).
+
+    발행된 주제뿐 아니라 폐기된 주제도 비교 대상에 포함하되, window_days가 지난
+    것들은 제외한다 (한 주제가 계속 화제일 수 있으므로 일정 기간이 지나면 다시
+    생성될 수 있게 하기 위함).
+    """
     cfg = get_config()
     count = count or cfg.review.draft_candidates
     context = _build_context(conn, category, cfg)
 
-    history = repo.recent_history(conn, category=category, limit=cfg.content.dedup.history_window)
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=cfg.content.dedup.window_days)
+    ).isoformat()
+    history = repo.recent_history(conn, category=category, limit=None, since=since)
+    discarded = repo.recent_discarded_drafts(conn, category=category, since=since)
     history_embeddings = [h.embedding for h in history if h.embedding]
+    history_embeddings += [d.embedding for d in discarded if d.embedding]
 
     accepted: list[dict[str, Any]] = []
     attempts = 0

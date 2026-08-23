@@ -23,7 +23,8 @@ content:
     - "https://export.arxiv.org/rss/cs.AI"
   dedup:
     similarity_threshold: 0.85   # 이 값 이상이면 과거 게시물과 중복으로 간주
-    history_window: 30           # 최근 N개 게시물과 비교
+    history_window: 30           # 난이도 진행 상황 판단(지식 카테고리)에 참고할 최근 게시물 수
+    window_days: 7                # 발행/폐기된 주제라도 이 기간이 지나면 다시 생성될 수 있음
   fixed_hashtags:                # 매 게시물에 고정으로 붙는 태그 - AI 관련 노출이 잘 되는 태그 위주
     - "AI"
     - "ArtificialIntelligence"
