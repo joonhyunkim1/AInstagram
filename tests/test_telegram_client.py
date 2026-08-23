@@ -64,6 +64,21 @@ def test_get_updates_returns_result_list():
     assert http.calls[0][2]["params"]["offset"] == 10
 
 
+def test_get_updates_returns_empty_list_when_webhook_conflict(monkeypatch):
+    client, http = make_client()
+
+    def conflict_get(url, **kwargs):
+        http.calls.append(("GET", url, kwargs))
+        return FakeResponse(
+            {"ok": False, "error_code": 409, "description": "Conflict: can't use getUpdates method while webhook is active"}
+        )
+
+    monkeypatch.setattr(http, "get", conflict_get)
+
+    updates = client.get_updates()
+    assert updates == []
+
+
 def test_answer_callback_query_posts_expected_payload():
     client, http = make_client()
     client.answer_callback_query("cb-1", "완료")

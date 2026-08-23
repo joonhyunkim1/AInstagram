@@ -96,8 +96,13 @@ class TelegramClient:
         if offset is not None:
             params["offset"] = offset
         response = self._http.get(f"{self._base_url}/getUpdates", params=params, timeout=30)
+        data = response.json()
+        if not data.get("ok") and data.get("error_code") == 409:
+            # 웹훅이 등록되어 있으면 getUpdates는 항상 409를 반환한다 (텔레그램 API 제약).
+            # 웹훅 모드에서는 기존 스케줄 폴링이 이 메서드를 계속 호출해도 조용히 넘어가게 한다.
+            return []
         response.raise_for_status()
-        return response.json().get("result", [])
+        return data.get("result", [])
 
     def answer_callback_query(self, callback_query_id: str, text: str) -> None:
         self._http.post(
