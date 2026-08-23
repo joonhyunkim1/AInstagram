@@ -10,11 +10,21 @@ Facebook 페이지 연결 없이 Instagram 비즈니스/크리에이터 계정�
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Protocol
 
 
 class HttpClient(Protocol):
     def post(self, url: str, **kwargs: Any): ...
+    def get(self, url: str, **kwargs: Any): ...
+
+
+class ContainerProcessingError(RuntimeError):
+    """미디어 컨테이너가 ERROR 상태로 처리 실패했을 때."""
+
+
+class ContainerProcessingTimeout(RuntimeError):
+    """미디어 컨테이너가 제한 시간 안에 FINISHED가 되지 않았을 때."""
 
 
 class InstagramClient:
@@ -38,6 +48,12 @@ class InstagramClient:
         response.raise_for_status()
         return response.json()
 
+    def _get(self, path: str, **params: Any) -> dict:
+        params["access_token"] = self.access_token
+        response = self._http.get(f"{self.base_url}/{path}", params=params, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
     def create_carousel_item(self, image_url: str) -> str:
         data = self._post(
             f"{self.business_account_id}/media", image_url=image_url, is_carousel_item="true"
@@ -57,9 +73,33 @@ class InstagramClient:
         data = self._post(f"{self.business_account_id}/media_publish", creation_id=creation_id)
         return data["id"]
 
+    def get_container_status(self, container_id: str) -> str:
+        data = self._get(container_id, fields="status_code")
+        return data["status_code"]
+
+    def wait_until_finished(
+        self, container_id: str, timeout: float = 60, interval: float = 3
+    ) -> None:
+        """캐러셀 부모 컨테이너는 비동기로 처리되기 때문에, FINISHED가 되기 전에
+        media_publish를 호출하면 'Media ID is not available' 에러가 난다.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            status = self.get_container_status(container_id)
+            if status == "FINISHED":
+                return
+            if status == "ERROR":
+                raise ContainerProcessingError(f"미디어 컨테이너 처리 실패: {container_id}")
+            if time.monotonic() >= deadline:
+                raise ContainerProcessingTimeout(
+                    f"미디어 컨테이너 처리 대기 시간 초과: {container_id} (status={status})"
+                )
+            time.sleep(interval)
+
     def publish_carousel(self, image_urls: list[str], caption: str) -> str:
         children_ids = [self.create_carousel_item(url) for url in image_urls]
         container_id = self.create_carousel_container(children_ids, caption)
+        self.wait_until_finished(container_id)
         return self.publish(container_id)
 
     @classmethod
