@@ -44,6 +44,30 @@ def build_fallback_background_prompt(topic: str, is_thumbnail: bool) -> str:
     )
 
 
+def compose_single_slide(
+    topic: str,
+    slide_text: str,
+    index: int,
+    total: int,
+    is_thumbnail: bool,
+    backend: ImageBackend,
+    quality: str,
+    style: template.BrandStyle,
+    category_label: str = "",
+) -> Image.Image:
+    """슬라이드 한 장만 렌더링한다. 대기열 검수 중 슬라이드를 한 장 추가할 때도 재사용."""
+    prompt = build_background_prompt(topic, slide_text, is_thumbnail)
+    try:
+        background = backend.generate_background(prompt, quality)
+    except ImageGenerationBlocked:
+        # 특정 슬라이드 내용이 안전 필터에 걸리면, 훨씬 중립적인 대체 프롬프트로 재시도한다
+        fallback_prompt = build_fallback_background_prompt(topic, is_thumbnail)
+        background = backend.generate_background(fallback_prompt, quality)
+    if is_thumbnail:
+        return template.render_thumbnail(background, topic, category_label, style)
+    return template.render_content_slide(background, slide_text, index, total, style)
+
+
 def compose_slides(
     topic: str,
     category: str,
@@ -55,19 +79,9 @@ def compose_slides(
     style = style or template.load_brand_style(get_config())
     label = CATEGORY_LABELS.get(category, category.upper())
 
-    images: list[Image.Image] = []
-    for i, text in enumerate(slides):
-        is_thumbnail = i == 0
-        prompt = build_background_prompt(topic, text, is_thumbnail)
-        try:
-            background = backend.generate_background(prompt, quality)
-        except ImageGenerationBlocked:
-            # 특정 슬라이드 내용이 안전 필터에 걸리면, 훨씬 중립적인 대체 프롬프트로 재시도한다
-            fallback_prompt = build_fallback_background_prompt(topic, is_thumbnail)
-            background = backend.generate_background(fallback_prompt, quality)
-        if is_thumbnail:
-            image = template.render_thumbnail(background, topic, label, style)
-        else:
-            image = template.render_content_slide(background, text, i, len(slides), style)
-        images.append(image)
-    return images
+    return [
+        compose_single_slide(
+            topic, text, i, len(slides), i == 0, backend, quality, style, label
+        )
+        for i, text in enumerate(slides)
+    ]

@@ -7,13 +7,20 @@ from PIL import Image
 
 from ainstagram import constants as c
 from ainstagram import repository as repo
-from ainstagram.config import get_config
 from ainstagram.db import get_connection
 from ainstagram.review import bot
 
 
 def make_conn(tmp_path):
     return get_connection(tmp_path / "test.db")
+
+
+def flat_callback_data(buttons):
+    return {b["callback_data"] for row in buttons for b in row}
+
+
+def flat_actions(buttons):
+    return {b["callback_data"].split(":")[0] for row in buttons for b in row}
 
 
 class FakeImageBackend:
@@ -34,12 +41,14 @@ class FakeS3Client:
 
 
 class FakeTelegram:
-    def __init__(self, update_batches=None):
+    def __init__(self, update_batches=None, downloaded_file_bytes=b"uploaded-bytes"):
         self.update_batches = list(update_batches or [])
         self.sent = []
         self.media_groups = []
         self.messages = []
         self.answered = []
+        self.downloaded_file_bytes = downloaded_file_bytes
+        self.downloaded_file_ids = []
 
     def send_photo_with_buttons(self, image_bytes, caption, buttons):
         self.sent.append((caption, buttons))
@@ -61,14 +70,18 @@ class FakeTelegram:
     def answer_callback_query(self, callback_query_id, text):
         self.answered.append((callback_query_id, text))
 
+    def download_file(self, file_id):
+        self.downloaded_file_ids.append(file_id)
+        return self.downloaded_file_bytes
 
-def make_draft(conn, topic="주제1"):
+
+def make_draft(conn, topic="주제1", slides=None):
     return repo.create_draft(
         conn,
         category=c.CATEGORY_NEWS,
         topic=topic,
         caption="캡션",
-        slides=["표지 문구", "본문1", "본문2"],
+        slides=slides or ["표지 문구", "본문1", "본문2"],
     )
 
 
@@ -79,8 +92,27 @@ def callback_update(update_id, action, draft_id, callback_id="cb-1"):
     }
 
 
+def raw_callback_update(update_id, data, callback_id="cb-1"):
+    return {"update_id": update_id, "callback_query": {"id": callback_id, "data": data}}
+
+
 def message_update(update_id, text):
     return {"update_id": update_id, "message": {"text": text}}
+
+
+def photo_message_update(update_id, file_id="file-1"):
+    return {"update_id": update_id, "message": {"photo": [{"file_id": file_id}]}}
+
+
+def make_ready_draft(tmp_path, monkeypatch, slides=None):
+    """R2 env까지 세팅하고, 검수 전송(이미지 렌더링+저장)까지 마친 draft를 만든다."""
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+    conn = make_conn(tmp_path)
+    draft_id = make_draft(conn, slides=slides)
+    telegram = FakeTelegram()
+    bot.send_drafts_for_review(conn, telegram, FakeImageBackend(), FakeS3Client())
+    return conn, draft_id
 
 
 def test_send_drafts_for_review_sends_full_slide_album_per_pending_draft(tmp_path, monkeypatch):
@@ -101,9 +133,10 @@ def test_send_drafts_for_review_sends_full_slide_album_per_pending_draft(tmp_pat
 
     caption, buttons = telegram.messages[0]
     assert "주제" in caption
-    assert {b["callback_data"].split(":")[0] for b in buttons} == {
+    assert flat_actions(buttons) == {
         bot.ACTION_APPROVE,
         bot.ACTION_APPROVE_TOP,
+        bot.ACTION_EDIT_MENU,
         bot.ACTION_DISCARD,
     }
 
@@ -214,11 +247,8 @@ def test_send_queue_status_lists_items_in_order(tmp_path):
     assert count == 2
     first_text, first_buttons = telegram.messages[0]
     assert "주제B" in first_text  # 우선순위 낮은 게 먼저
-    assert {b["callback_data"].split(":")[0] for b in first_buttons} == {
-        bot.ACTION_QUEUE_BUMP,
-        bot.ACTION_QUEUE_REMOVE,
-    }
-    assert first_buttons[0]["callback_data"] == f"{bot.ACTION_QUEUE_BUMP}:{q2}"
+    assert flat_actions(first_buttons) == {bot.ACTION_QUEUE_BUMP, bot.ACTION_QUEUE_REMOVE}
+    assert first_buttons[0][0]["callback_data"] == f"{bot.ACTION_QUEUE_BUMP}:{q2}"
 
 
 def test_process_pending_reviews_routes_queue_command(tmp_path):
@@ -260,3 +290,151 @@ def test_process_pending_reviews_queue_remove(tmp_path):
     draft = repo.get_draft(conn, d1)
     assert draft.status == c.DRAFT_DISCARDED
     assert telegram.answered[0][1] == "대기열에서 제거했습니다."
+
+
+# ---- 수정 메뉴 ----
+
+
+def test_edit_menu_action_sends_submenu(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram([[callback_update(1, bot.ACTION_EDIT_MENU, draft_id)]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    text, buttons = telegram.messages[-1]
+    assert "수정" in text
+    assert flat_actions(buttons) == {
+        bot.ACTION_DELETE_IMAGE_MENU,
+        bot.ACTION_ADD_IMAGE_AI,
+        bot.ACTION_ADD_IMAGE_UPLOAD,
+        bot.ACTION_EDIT_CAPTION,
+        bot.ACTION_EDIT_CANCEL,
+    }
+
+
+def test_edit_menu_refuses_on_already_processed_draft(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = make_draft(conn)
+    repo.discard_draft(conn, draft_id)
+
+    telegram = FakeTelegram([[callback_update(1, bot.ACTION_EDIT_MENU, draft_id)]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    assert telegram.answered[0][1] == "이미 처리된 초안이라 수정할 수 없습니다."
+    assert telegram.messages == []
+
+
+def test_delete_image_menu_lists_slide_numbers(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram([[callback_update(1, bot.ACTION_DELETE_IMAGE_MENU, draft_id)]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    text, buttons = telegram.messages[-1]
+    assert "번호" in text
+    numbers = {b["text"] for row in buttons for b in row if b["callback_data"].startswith(bot.ACTION_DELETE_IMAGE + ":")}
+    assert numbers == {"1", "2", "3"}
+
+
+def test_delete_image_removes_slide_and_resends_preview(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram([[raw_callback_update(1, f"{bot.ACTION_DELETE_IMAGE}:{draft_id}:1")]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.slides == ["표지 문구", "본문2"]
+    assert len(draft.image_urls) == 2
+    assert telegram.answered[0][1] == "2번 슬라이드를 삭제했습니다."
+    assert len(telegram.media_groups[-1]) == 2  # 삭제 후 미리보기 재전송
+
+
+def test_delete_image_refuses_when_only_one_left(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch, slides=["표지 문구"])
+
+    telegram = FakeTelegram([[raw_callback_update(1, f"{bot.ACTION_DELETE_IMAGE}:{draft_id}:0")]])
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert len(draft.image_urls) == 1
+    assert telegram.answered[0][1] == "이미지가 1장뿐이라 삭제할 수 없습니다."
+
+
+def test_add_image_ai_flow_appends_new_slide(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram(
+        [
+            [callback_update(1, bot.ACTION_ADD_IMAGE_AI, draft_id)],
+            [message_update(2, "새로 추가하는 슬라이드 문구입니다.")],
+        ]
+    )
+    image_backend = FakeImageBackend()
+    bot.process_pending_reviews(conn, telegram, image_backend, FakeS3Client())
+    bot.process_pending_reviews(conn, telegram, image_backend, FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.slides[-1] == "새로 추가하는 슬라이드 문구입니다."
+    assert len(draft.image_urls) == 4
+    assert len(telegram.media_groups[-1]) == 4
+
+
+def test_add_image_upload_flow_appends_uploaded_photo(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram(
+        [
+            [callback_update(1, bot.ACTION_ADD_IMAGE_UPLOAD, draft_id)],
+            [photo_message_update(2, file_id="my-file-id")],
+        ],
+        downloaded_file_bytes=_tiny_jpeg_bytes(),
+    )
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert len(draft.image_urls) == 4
+    assert draft.slides[-1] == ""
+    assert telegram.downloaded_file_ids == ["my-file-id"]
+
+
+def test_edit_caption_flow_replaces_caption(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram(
+        [
+            [callback_update(1, bot.ACTION_EDIT_CAPTION, draft_id)],
+            [message_update(2, "새로운 캡션입니다.")],
+        ]
+    )
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.caption == "새로운 캡션입니다."
+
+
+def test_edit_cancel_clears_pending_action(tmp_path, monkeypatch):
+    conn, draft_id = make_ready_draft(tmp_path, monkeypatch)
+
+    telegram = FakeTelegram(
+        [
+            [callback_update(1, bot.ACTION_EDIT_CAPTION, draft_id)],
+            [callback_update(2, bot.ACTION_EDIT_CANCEL, draft_id)],
+            [message_update(3, "이건 캡션으로 반영되면 안 됨")],
+        ]
+    )
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+    bot.process_pending_reviews(conn, telegram, FakeImageBackend(), FakeS3Client())
+
+    draft = repo.get_draft(conn, draft_id)
+    assert draft.caption == "캡션"  # 원래 캡션 그대로
+
+
+def _tiny_jpeg_bytes() -> bytes:
+    import io as _io
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (8, 8), color=(50, 60, 70)).save(buf, format="JPEG")
+    return buf.getvalue()
