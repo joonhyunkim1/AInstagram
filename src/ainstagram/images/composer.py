@@ -10,15 +10,15 @@ from .ai_background import ImageBackend
 
 CATEGORY_LABELS = {
     c.CATEGORY_NEWS: "AI NEWS",
-    c.CATEGORY_KNOWLEDGE: "AI 지식",
+    c.CATEGORY_KNOWLEDGE: "AI KNOWLEDGE",
 }
 
 
 def build_background_prompt(topic: str, slide_text: str, is_thumbnail: bool) -> str:
-    role = "표지" if is_thumbnail else "본문"
+    role = "cover" if is_thumbnail else "body"
     return (
-        f"인스타그램 카드뉴스 {role}용 배경 일러스트. 미니멀한 플랫 디자인, 은은한 그라디언트, "
-        f"글자나 텍스트는 절대 포함하지 않음. 주제: {topic}. 이 장면과 관련된 이미지: {slide_text}"
+        f"Background illustration for an Instagram carousel {role} slide. Minimal flat design, "
+        f"subtle gradient, absolutely no text or lettering. Topic: {topic}. Scene related to: {slide_text}"
     )
 
 

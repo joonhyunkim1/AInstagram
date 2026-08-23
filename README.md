@@ -39,6 +39,8 @@ pytest tests/ -q
 - `instagram.account_name`, `instagram.business_account_id`: 계정 확정되면 채우기
 - `content.topics`: 비어있으면 LLM이 카테고리 안에서 자유롭게 주제를 고름
 - `content.news_feeds`: 참고할 RSS 목록, 자유롭게 추가/삭제 가능
+- `content.language`: 게시물 본문 언어 (현재 영어 - 더 넓은 시장을 노려서)
+- `content.fixed_hashtags`: 매 게시물에 고정으로 붙는 해시태그. 주제별 동적 해시태그는 LLM이 생성해서 앞에 붙고, 그 뒤에 이 목록이 붙는다.
 - `posting.times`: 게시 시각 (바꾸면 `.github/workflows/publish_next.yml`의 cron도 같이 수정해야 함)
 - `image.brand`: 피드 통일감을 위한 포인트 컬러/오버레이/캔버스 크기
 

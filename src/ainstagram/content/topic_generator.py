@@ -23,15 +23,15 @@ def _build_knowledge_context(conn: sqlite3.Connection, cfg: AppConfig) -> str:
         conn, category=c.CATEGORY_KNOWLEDGE, limit=cfg.content.dedup.history_window
     )
     if not history:
-        return "아직 지식 카테고리로 다룬 주제 없음 - 입문 수준(난이도 1)부터 시작."
+        return "No knowledge-category topics covered yet - start from an introductory level (difficulty 1)."
 
-    covered = [f"- (난이도 {h.difficulty_level}) {h.topic}" for h in history]
+    covered = [f"- (difficulty {h.difficulty_level}) {h.topic}" for h in history]
     levels = [h.difficulty_level for h in history if h.difficulty_level is not None]
     avg_level = sum(levels) / len(levels) if levels else 1
     return (
-        f"지금까지 다룬 지식 주제 (최근 {len(history)}개, 평균 난이도 {avg_level:.1f}):\n"
+        f"Knowledge topics covered so far (last {len(history)}, average difficulty {avg_level:.1f}):\n"
         + "\n".join(covered)
-        + "\n\n독자 수준을 고려해 위 목록과 겹치지 않는 다음 단계 주제를 골라라."
+        + "\n\nConsidering the reader's level, pick the next-step topic that doesn't overlap with the list above."
     )
 
 
@@ -90,20 +90,44 @@ def generate_candidates(
     return accepted
 
 
+def build_caption_with_hashtags(
+    base_caption: str, dynamic_hashtags: list[str], fixed_hashtags: list[str]
+) -> str:
+    """동적(주제별) 해시태그를 앞에, 고정 해시태그를 뒤에 붙인다. 중복은 한 번만 남긴다."""
+    seen: set[str] = set()
+    ordered_tags: list[str] = []
+    for tag in [*dynamic_hashtags, *fixed_hashtags]:
+        normalized = tag.lstrip("#").replace(" ", "")
+        if not normalized or normalized.lower() in seen:
+            continue
+        seen.add(normalized.lower())
+        ordered_tags.append(normalized)
+
+    if not ordered_tags:
+        return base_caption
+
+    tag_line = " ".join(f"#{tag}" for tag in ordered_tags)
+    return f"{base_caption}\n\n{tag_line}"
+
+
 def generate_and_store_drafts(
     conn: sqlite3.Connection,
     category: str,
     llm: LLM,
     count: int | None = None,
 ) -> list[int]:
+    cfg = get_config()
     candidates = generate_candidates(conn, category, llm, count)
     draft_ids = []
     for cand in candidates:
+        caption = build_caption_with_hashtags(
+            cand["caption"], cand.get("hashtags", []), cfg.content.fixed_hashtags
+        )
         draft_id = repo.create_draft(
             conn,
             category=category,
             topic=cand["topic"],
-            caption=cand["caption"],
+            caption=caption,
             slides=cand["slides"],
             embedding=cand.get("embedding"),
             difficulty_level=cand.get("difficulty_level"),
