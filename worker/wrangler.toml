@@ -8,6 +8,7 @@ GITHUB_REPO = "AInstagram"
 GITHUB_WORKFLOW_FILE = "poll_reviews.yml"
 GITHUB_REF = "main"
 
-# 아래 두 개는 여기 평문으로 넣지 않고 시크릿으로 등록한다:
+# 아래는 여기 평문으로 넣지 않고 시크릿으로 등록한다:
 #   wrangler secret put GITHUB_TOKEN
 #   wrangler secret put TELEGRAM_WEBHOOK_SECRET
+#   wrangler secret put TELEGRAM_BOT_TOKEN

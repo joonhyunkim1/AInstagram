@@ -8,3 +8,5 @@ venv/
 data/media/
 *.log
 .pytest_cache/
+worker/.wrangler/
+worker/node_modules/
