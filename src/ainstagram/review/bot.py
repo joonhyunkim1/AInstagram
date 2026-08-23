@@ -516,6 +516,7 @@ def process_updates(
         if action == ACTION_DISCARD:
             repo.discard_draft(conn, draft_id)
             telegram.answer_callback_query(callback["id"], "폐기했습니다.")
+            telegram.send_message(f"❌ 폐기했습니다: {draft.topic}")
         elif action == ACTION_APPROVE:
             _approve_and_enqueue(conn, draft_id, image_backend, storage_client, cfg, priority=None)
             telegram.answer_callback_query(callback["id"], "채택 완료 - 대기열에 추가했습니다.")
