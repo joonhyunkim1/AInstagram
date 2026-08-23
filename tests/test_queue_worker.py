@@ -3,6 +3,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from PIL import Image
+
 from ainstagram import constants as c
 from ainstagram import repository as repo
 from ainstagram.db import get_connection
@@ -23,9 +25,61 @@ class FakeInstagram:
         return self.media_id
 
 
+class FakeImageBackend:
+    def generate_background(self, prompt, quality, size="1024x1024"):
+        return Image.new("RGB", (64, 64), color=(100, 100, 100))
+
+
+class FakeS3Client:
+    def put_object(self, **kwargs):
+        pass
+
+
+class FakeLLM:
+    def generate_topics(self, category, context, count):
+        return [{"topic": "새로 생성된 주제", "caption": "캡션", "slides": ["표지", "본문1"]} for _ in range(count)]
+
+    def embed(self, text):
+        return [0.0, 0.0]
+
+
+class FakeTelegram:
+    def __init__(self):
+        self.messages = []
+
+    def send_message(self, text, buttons=None):
+        self.messages.append(text)
+
+
 def test_publish_next_returns_none_when_queue_empty(tmp_path):
     conn = make_conn(tmp_path)
     assert queue_worker.publish_next(conn, FakeInstagram()) is None
+
+
+def test_publish_next_auto_generates_and_publishes_when_queue_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("R2_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("R2_PUBLIC_BASE_URL", "https://cdn.example.com")
+    conn = make_conn(tmp_path)
+    instagram = FakeInstagram(media_id="media-auto")
+    telegram = FakeTelegram()
+
+    media_id = queue_worker.publish_next(
+        conn,
+        instagram,
+        image_backend=FakeImageBackend(),
+        storage_client=FakeS3Client(),
+        telegram=telegram,
+        llm=FakeLLM(),
+    )
+
+    assert media_id == "media-auto"
+    assert len(instagram.calls) == 1
+    assert repo.next_in_queue(conn) is None
+    history = repo.recent_history(conn)
+    assert len(history) == 1
+    assert history[0].topic == "새로 생성된 주제"
+    assert len(telegram.messages) == 1
+    assert "검수 없이" in telegram.messages[0]
 
 
 def test_publish_next_publishes_and_records_history(tmp_path):

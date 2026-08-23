@@ -5,14 +5,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ainstagram.db import get_connection
+from ainstagram.images.ai_background import OpenAIImageBackend
+from ainstagram.images.storage import get_r2_client
 from ainstagram.publish.instagram_client import InstagramClient
 from ainstagram.publish.queue_worker import publish_next
+from ainstagram.review.telegram_client import TelegramClient
 
 
 def main() -> None:
     conn = get_connection()
     instagram = InstagramClient.from_env()
-    media_id = publish_next(conn, instagram)
+    image_backend = OpenAIImageBackend.from_config()
+    storage_client = get_r2_client()
+    telegram = TelegramClient.from_env()
+    media_id = publish_next(conn, instagram, image_backend, storage_client, telegram)
     if media_id:
         print(f"발행 완료: {media_id}")
     else:
