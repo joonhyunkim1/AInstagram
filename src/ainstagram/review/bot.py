@@ -113,10 +113,13 @@ def send_drafts_for_review(
     """pending 초안들의 전체 슬라이드(실제 게시될 최종 품질)를 렌더링해서 앨범으로 전송한다.
 
     여기서 만든 이미지를 draft에 저장해두기 때문에, 채택 시 다시 만들지 않는다.
+    이미 이미지가 만들어져 검수 요청까지 보낸(아직 응답을 안 받은) 초안은 건너뛴다 -
+    그렇지 않으면 검수 안 하고 방치된 예전 초안이 /generate를 다시 호출할 때마다
+    비용을 들여 다시 만들어지고 다시 전송된다.
     """
     cfg = cfg or get_config()
     style = template.load_brand_style(cfg)
-    pending = repo.list_pending_drafts(conn)
+    pending = [d for d in repo.list_pending_drafts(conn) if not d.image_urls]
 
     for draft in pending:
         images = composer.compose_slides(
