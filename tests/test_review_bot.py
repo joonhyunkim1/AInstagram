@@ -178,6 +178,8 @@ def test_process_pending_reviews_discard(tmp_path):
     assert repo.next_in_queue(conn) is None
     assert offset == 2
     assert telegram.answered[0][1] == "폐기했습니다."
+    assert "폐기했습니다" in telegram.messages[0][0]
+    assert "주제1" in telegram.messages[0][0]
 
 
 def test_process_updates_handles_single_update_directly(tmp_path):
@@ -194,6 +196,7 @@ def test_process_updates_handles_single_update_directly(tmp_path):
     draft = repo.get_draft(conn, draft_id)
     assert draft.status == c.DRAFT_DISCARDED
     assert telegram.answered[0][1] == "폐기했습니다."
+    assert "폐기했습니다" in telegram.messages[0][0]
 
 
 def test_process_pending_reviews_approve_enqueues_with_default_priority(tmp_path, monkeypatch):
