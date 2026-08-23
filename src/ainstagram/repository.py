@@ -68,6 +68,19 @@ def set_draft_images(conn: sqlite3.Connection, draft_id: int, image_urls: list[s
     conn.commit()
 
 
+def set_draft_slides(conn: sqlite3.Connection, draft_id: int, slides: list[str]) -> None:
+    conn.execute(
+        "UPDATE drafts SET slides_json = ? WHERE id = ?",
+        (json.dumps(slides, ensure_ascii=False), draft_id),
+    )
+    conn.commit()
+
+
+def set_draft_caption(conn: sqlite3.Connection, draft_id: int, caption: str) -> None:
+    conn.execute("UPDATE drafts SET caption = ? WHERE id = ?", (caption, draft_id))
+    conn.commit()
+
+
 def discard_draft(conn: sqlite3.Connection, draft_id: int) -> None:
     conn.execute("UPDATE drafts SET status = ? WHERE id = ?", (c.DRAFT_DISCARDED, draft_id))
     conn.commit()
