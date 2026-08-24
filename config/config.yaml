@@ -4,7 +4,8 @@ instagram:
   business_account_id: ""      # Meta Graph API에서 발급받은 IG 유저 ID
 
 posting:
-  timezone: "Asia/Seoul"
+  timezone: "America/New_York"  # 미국 동부(Eastern) 기준. GitHub Actions cron은 UTC 고정이라
+                                  # 서머타임(DST) 전환 시(3월/11월) 자동으로 안 따라가고 1시간 밀림
   times: ["07:00", "12:00", "18:00", "23:00"]
   images_per_post:
     min: 2

@@ -2,9 +2,10 @@ name: 게시
 
 on:
   schedule:
-    # config/config.yaml의 posting.times(07/12/18/23시 KST)와 맞춰둔 값.
-    # 게시 시간을 바꾸면 이 cron도 같이 수정해야 함.
-    - cron: "0 22,3,9,14 * * *"
+    # config/config.yaml의 posting.times(07/12/18/23시 미국 동부/Eastern)와 맞춰둔 값.
+    # cron은 UTC 고정이라 서머타임(EDT, UTC-4) 기준으로 계산함 - 서머타임이 끝나는
+    # 11월부터는 EST(UTC-5)라 실제 게시가 1시간 밀림. 게시 시간을 바꾸면 이 cron도 같이 수정해야 함.
+    - cron: "0 11,16,22,3 * * *"
   workflow_dispatch: {}
 
 permissions:
