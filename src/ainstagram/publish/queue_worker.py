@@ -72,24 +72,31 @@ def publish_next(
             return None
         auto_generated = True
 
-    media_id = instagram.publish_carousel(item.image_urls, item.caption)
-    repo.mark_queue_item_published(conn, item.id)
-
     draft = repo.get_draft(conn, item.draft_id)
+    topic = draft.topic if draft else ""
+
+    try:
+        media_id = instagram.publish_carousel(item.image_urls, item.caption)
+    except Exception as e:
+        if telegram is not None:
+            telegram.send_message(f"❌ 게시 실패: {topic}\n\n{e}")
+        raise
+
+    repo.mark_queue_item_published(conn, item.id)
     repo.insert_history(
         conn,
         category=draft.category if draft else "",
-        topic=draft.topic if draft else "",
+        topic=topic,
         caption=item.caption,
         instagram_media_id=media_id,
         difficulty_level=draft.difficulty_level if draft else None,
         embedding=draft.embedding if draft else None,
     )
 
-    if auto_generated and telegram is not None:
-        topic = draft.topic if draft else ""
-        telegram.send_message(
-            f"대기열이 비어 있어 새로 생성한 게시물을 검수 없이 바로 발행했습니다.\n\n주제: {topic}"
-        )
+    if telegram is not None:
+        message = f"✅ 게시 완료: {topic}"
+        if auto_generated:
+            message += "\n\n(대기열이 비어 있어 검수 없이 바로 발행됨)"
+        telegram.send_message(message)
 
     return media_id
