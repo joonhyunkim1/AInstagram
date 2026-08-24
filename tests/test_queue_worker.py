@@ -51,6 +51,16 @@ class FakeTelegram:
         self.messages.append(text)
 
 
+class FailingInstagram:
+    def __init__(self, error=RuntimeError("Instagram API 오류: rate limited")):
+        self.error = error
+        self.calls = []
+
+    def publish_carousel(self, image_urls, caption):
+        self.calls.append((image_urls, caption))
+        raise self.error
+
+
 def test_publish_next_returns_none_when_queue_empty(tmp_path):
     conn = make_conn(tmp_path)
     assert queue_worker.publish_next(conn, FakeInstagram()) is None
@@ -111,3 +121,48 @@ def test_publish_next_publishes_and_records_history(tmp_path):
     assert history[0].instagram_media_id == "media-42"
     assert history[0].difficulty_level == 2
     assert history[0].embedding == [0.1, 0.2]
+
+
+def test_publish_next_sends_telegram_success_message(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="주제A", caption="캡션", slides=["s1"]
+    )
+    repo.approve_draft(conn, draft_id, priority=50)
+    repo.enqueue(conn, draft_id, "캡션", ["https://cdn.example.com/1.jpg"], priority=50)
+
+    telegram = FakeTelegram()
+    media_id = queue_worker.publish_next(conn, FakeInstagram(media_id="media-99"), telegram=telegram)
+
+    assert media_id == "media-99"
+    assert len(telegram.messages) == 1
+    assert "✅ 게시 완료" in telegram.messages[0]
+    assert "주제A" in telegram.messages[0]
+
+
+def test_publish_next_sends_telegram_failure_message_and_reraises(tmp_path):
+    conn = make_conn(tmp_path)
+    draft_id = repo.create_draft(
+        conn, category=c.CATEGORY_NEWS, topic="주제B", caption="캡션", slides=["s1"]
+    )
+    repo.approve_draft(conn, draft_id, priority=50)
+    queue_id = repo.enqueue(conn, draft_id, "캡션", ["https://cdn.example.com/1.jpg"], priority=50)
+
+    telegram = FakeTelegram()
+    instagram = FailingInstagram()
+
+    try:
+        queue_worker.publish_next(conn, instagram, telegram=telegram)
+        assert False, "예외가 발생해야 함"
+    except RuntimeError:
+        pass
+
+    assert len(telegram.messages) == 1
+    assert "❌ 게시 실패" in telegram.messages[0]
+    assert "주제B" in telegram.messages[0]
+
+    # 발행에 실패했으니 큐/이력 상태는 그대로 유지되어야 함
+    remaining = repo.next_in_queue(conn)
+    assert remaining is not None
+    assert remaining.id == queue_id
+    assert repo.recent_history(conn) == []
