@@ -183,6 +183,7 @@ def insert_history(
     instagram_media_id: Optional[str] = None,
     difficulty_level: Optional[int] = None,
     embedding: Optional[list[float]] = None,
+    published_at: Optional[str] = None,
 ) -> int:
     cur = conn.execute(
         """
@@ -191,7 +192,7 @@ def insert_history(
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            _now(),
+            published_at or _now(),
             category,
             topic,
             caption,

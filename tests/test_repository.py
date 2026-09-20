@@ -194,3 +194,16 @@ def test_cancel_queue_item_removes_and_discards_draft(tmp_path):
     assert repo.list_queue(conn) == []
     draft = repo.get_draft(conn, draft_id)
     assert draft.status == c.DRAFT_DISCARDED
+
+
+def test_insert_history_uses_given_published_at(tmp_path):
+    conn = make_conn(tmp_path)
+    repo.insert_history(
+        conn, category=c.CATEGORY_NEWS, topic="t", caption="c",
+        published_at="2026-08-30T09:30:00+00:00",
+    )
+    repo.insert_history(conn, category=c.CATEGORY_NEWS, topic="t2", caption="c")
+
+    by_topic = {h.topic: h for h in repo.recent_history(conn, limit=None)}
+    assert by_topic["t"].published_at == "2026-08-30T09:30:00+00:00"
+    assert by_topic["t2"].published_at > "2026-09-01"  # 지정하지 않으면 현재 시각

@@ -215,3 +215,16 @@ def test_publish_carousel_ignores_old_post_with_same_caption(monkeypatch):
 
     with pytest.raises(InstagramAPIError):
         client.publish_carousel(["https://cdn.example.com/1.jpg"], "캡션")
+
+
+def test_iter_media_follows_paging_cursor_newest_first():
+    page1 = {"data": [{"id": "m3"}, {"id": "m2"}], "paging": {"cursors": {"after": "CUR1"}, "next": "https://x"}}
+    page2 = {"data": [{"id": "m1"}], "paging": {"cursors": {"after": "CUR2"}}}
+    client, http = make_client(get_responses=[page1, page2])
+
+    ids = [m["id"] for m in client.iter_media(page_size=2)]
+
+    assert ids == ["m3", "m2", "m1"]
+    assert "after" not in http.calls[0][2]
+    assert http.calls[1][2]["after"] == "CUR1"
+    assert http.calls[0][1].endswith("/me/media")
