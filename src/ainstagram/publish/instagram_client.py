@@ -169,6 +169,20 @@ class InstagramClient:
                 time.sleep(interval)
         return None
 
+    def iter_media(self, page_size: int = 50, max_pages: int = 20):
+        """계정의 게시물을 최신순으로 순회한다 (id, caption, timestamp, media_type)."""
+        after = None
+        for _ in range(max_pages):
+            params: dict[str, Any] = {"fields": "id,caption,timestamp,media_type", "limit": page_size}
+            if after:
+                params["after"] = after
+            data = self._get("me/media", **params)
+            yield from data.get("data", [])
+            paging = data.get("paging", {})
+            after = paging.get("cursors", {}).get("after")
+            if not paging.get("next") or not after:
+                return
+
     def publish_carousel(self, image_urls: list[str], caption: str) -> str:
         started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
         children_ids = [self.create_carousel_item(url) for url in image_urls]

@@ -1,0 +1,43 @@
+name: 발행 이력 복구
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true면 DB를 바꾸지 않고 복구 대상만 출력"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+# 다른 워크플로우와 같은 DB 파일을 커밋하므로 같은 그룹으로 묶어 순서대로 실행한다.
+concurrency:
+  group: ainstagram-db-writer
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python scripts/backfill_history.py ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          IG_BUSINESS_ACCOUNT_ID: ${{ secrets.IG_BUSINESS_ACCOUNT_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: DB 변경사항 커밋
+        run: |
+          git config user.name "ainstagram-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/ainstagram.db
+          git diff --cached --quiet || git commit -m "chore: 발행 이력 복구 반영"
+          git push
