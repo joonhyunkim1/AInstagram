@@ -16,6 +16,12 @@ from ..review.telegram_client import TelegramClient
 from .instagram_client import InstagramClient
 
 
+def build_publish_caption(topic: str, caption: str) -> str:
+    """인스타그램에 올릴 본문: 제목, 빈 줄, 기존 캡션 순서."""
+    topic = topic.strip()
+    return f"{topic}\n\n{caption}" if topic else caption
+
+
 def _auto_generate_and_enqueue(
     conn: sqlite3.Connection,
     image_backend: ImageBackend,
@@ -76,7 +82,9 @@ def publish_next(
     topic = draft.topic if draft else ""
 
     try:
-        media_id = instagram.publish_carousel(item.image_urls, item.caption)
+        media_id = instagram.publish_carousel(
+            item.image_urls, build_publish_caption(topic, item.caption)
+        )
     except Exception as e:
         if telegram is not None:
             telegram.send_message(f"❌ 게시 실패: {topic}\n\n{str(e)[:1000]}")

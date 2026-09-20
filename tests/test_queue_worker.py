@@ -110,7 +110,7 @@ def test_publish_next_publishes_and_records_history(tmp_path):
     media_id = queue_worker.publish_next(conn, instagram)
 
     assert media_id == "media-42"
-    assert instagram.calls[0] == (["https://cdn.example.com/1.jpg"], "캡션")
+    assert instagram.calls[0] == (["https://cdn.example.com/1.jpg"], "트랜스포머 기초\n\n캡션")
 
     # 발행된 큐 항목은 다음 조회에서 빠져야 함
     assert repo.next_in_queue(conn) is None
@@ -166,3 +166,12 @@ def test_publish_next_sends_telegram_failure_message_and_reraises(tmp_path):
     assert remaining is not None
     assert remaining.id == queue_id
     assert repo.recent_history(conn) == []
+
+
+def test_build_publish_caption_puts_title_then_blank_line_then_caption():
+    assert queue_worker.build_publish_caption("제목", "본문 #tag") == "제목\n\n본문 #tag"
+    assert queue_worker.build_publish_caption("  제목  ", "본문") == "제목\n\n본문"
+
+
+def test_build_publish_caption_without_topic_returns_caption_only():
+    assert queue_worker.build_publish_caption("", "본문") == "본문"
