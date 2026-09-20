@@ -79,7 +79,7 @@ def publish_next(
         media_id = instagram.publish_carousel(item.image_urls, item.caption)
     except Exception as e:
         if telegram is not None:
-            telegram.send_message(f"❌ 게시 실패: {topic}\n\n{e}")
+            telegram.send_message(f"❌ 게시 실패: {topic}\n\n{str(e)[:1000]}")
         raise
 
     repo.mark_queue_item_published(conn, item.id)

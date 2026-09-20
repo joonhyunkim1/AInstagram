@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -8,16 +9,19 @@ import pytest
 from ainstagram.publish.instagram_client import (
     ContainerProcessingError,
     ContainerProcessingTimeout,
+    InstagramAPIError,
     InstagramClient,
 )
 
 
 class FakeResponse:
-    def __init__(self, json_data):
+    def __init__(self, json_data, status_code=200):
         self._json_data = json_data
+        self.status_code = status_code
 
     def raise_for_status(self):
-        pass
+        if self.status_code >= 400:
+            raise RuntimeError("HTTP error https://graph.instagram.com/v21.0/x?access_token=TOKEN")
 
     def json(self):
         return self._json_data
@@ -31,11 +35,15 @@ class FakeHttp:
 
     def post(self, url, **kwargs):
         self.calls.append(("POST", url, kwargs["data"]))
-        return FakeResponse(self.post_responses.pop(0))
+        return self._to_response(self.post_responses.pop(0))
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs["params"]))
-        return FakeResponse(self.get_responses.pop(0))
+        return self._to_response(self.get_responses.pop(0))
+
+    @staticmethod
+    def _to_response(item):
+        return item if isinstance(item, FakeResponse) else FakeResponse(item)
 
 
 def make_client(post_responses=None, get_responses=None):
@@ -137,3 +145,73 @@ def test_publish_carousel_calls_in_expected_order(monkeypatch):
         ("GET", "https://graph.instagram.com/v21.0/container-1"),
         ("POST", "https://graph.instagram.com/v21.0/IGID/media_publish"),
     ]
+
+
+def publish_error_response():
+    return FakeResponse(
+        {"error": {"message": "Application does not have permission", "type": "OAuthException", "code": 10}},
+        status_code=403,
+    )
+
+
+def recent_media(caption, minutes_ago=0):
+    posted_at = datetime.now(timezone.utc).replace(microsecond=0)
+    return {
+        "data": [
+            {
+                "id": "media-recovered",
+                "caption": caption,
+                "timestamp": posted_at.strftime("%Y-%m-%dT%H:%M:%S+0000"),
+            }
+        ]
+    }
+
+
+def test_api_error_message_includes_response_body_but_not_token():
+    client, _ = make_client(post_responses=[publish_error_response()])
+
+    with pytest.raises(InstagramAPIError) as exc_info:
+        client.publish("container-1")
+
+    message = str(exc_info.value)
+    assert "403" in message
+    assert "Application does not have permission" in message
+    assert "code=10" in message
+    assert "TOKEN" not in message
+
+
+def test_publish_carousel_treats_error_as_success_when_post_actually_went_live(monkeypatch):
+    monkeypatch.setattr("ainstagram.publish.instagram_client.time.sleep", lambda _: None)
+    client, http = make_client(
+        post_responses=[{"id": "item-1"}, {"id": "container-1"}, publish_error_response()],
+        get_responses=[{"status_code": "FINISHED"}, recent_media("캡션  본문\n#tag")],
+    )
+
+    media_id = client.publish_carousel(["https://cdn.example.com/1.jpg"], "캡션 본문 #tag")
+
+    assert media_id == "media-recovered"  # 공백/줄바꿈 차이는 무시하고 같은 캡션으로 판단
+    assert http.calls[-1][1].endswith("/me/media")
+
+
+def test_publish_carousel_reraises_when_no_matching_post_found(monkeypatch):
+    monkeypatch.setattr("ainstagram.publish.instagram_client.time.sleep", lambda _: None)
+    other = recent_media("다른 게시물 캡션")
+    client, _ = make_client(
+        post_responses=[{"id": "item-1"}, {"id": "container-1"}, publish_error_response()],
+        get_responses=[{"status_code": "FINISHED"}, other, other, other],
+    )
+
+    with pytest.raises(InstagramAPIError, match="Application does not have permission"):
+        client.publish_carousel(["https://cdn.example.com/1.jpg"], "캡션")
+
+
+def test_publish_carousel_ignores_old_post_with_same_caption(monkeypatch):
+    monkeypatch.setattr("ainstagram.publish.instagram_client.time.sleep", lambda _: None)
+    old = {"data": [{"id": "old", "caption": "캡션", "timestamp": "2020-01-01T00:00:00+0000"}]}
+    client, _ = make_client(
+        post_responses=[{"id": "item-1"}, {"id": "container-1"}, publish_error_response()],
+        get_responses=[{"status_code": "FINISHED"}, old, old, old],
+    )
+
+    with pytest.raises(InstagramAPIError):
+        client.publish_carousel(["https://cdn.example.com/1.jpg"], "캡션")
