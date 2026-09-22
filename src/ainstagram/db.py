@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS queue (
     image_urls_json TEXT NOT NULL,
     priority INTEGER NOT NULL DEFAULT 100,
     status TEXT NOT NULL DEFAULT 'queued',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
 );
 
 CREATE TABLE IF NOT EXISTS kv_state (
@@ -72,3 +74,10 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if "image_urls_json" not in columns:
         conn.execute("ALTER TABLE drafts ADD COLUMN image_urls_json TEXT")
         conn.commit()
+
+    queue_columns = {row["name"] for row in conn.execute("PRAGMA table_info(queue)")}
+    if "attempts" not in queue_columns:
+        conn.execute("ALTER TABLE queue ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+    if "last_error" not in queue_columns:
+        conn.execute("ALTER TABLE queue ADD COLUMN last_error TEXT")
+    conn.commit()

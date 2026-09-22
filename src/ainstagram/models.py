@@ -48,6 +48,8 @@ class QueueItem:
     priority: int
     status: str
     created_at: str
+    attempts: int = 0
+    last_error: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "QueueItem":
@@ -59,6 +61,8 @@ class QueueItem:
             priority=row["priority"],
             status=row["status"],
             created_at=row["created_at"],
+            attempts=row["attempts"],
+            last_error=row["last_error"],
         )
 
 

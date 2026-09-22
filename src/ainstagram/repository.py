@@ -139,6 +139,23 @@ def mark_queue_item_published(conn: sqlite3.Connection, queue_id: int) -> None:
     conn.commit()
 
 
+def record_publish_failure(conn: sqlite3.Connection, queue_id: int, error: str) -> int:
+    """발행 실패를 기록하고 누적 실패 횟수를 반환한다 (상태는 그대로 queued)."""
+    conn.execute(
+        "UPDATE queue SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+        (error[:1000], queue_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT attempts FROM queue WHERE id = ?", (queue_id,)).fetchone()
+    return row["attempts"]
+
+
+def mark_queue_item_failed(conn: sqlite3.Connection, queue_id: int) -> None:
+    """발행을 포기하고 대기열에서 제외한다 (다음 항목이 발행되도록)."""
+    conn.execute("UPDATE queue SET status = ? WHERE id = ?", (c.QUEUE_FAILED, queue_id))
+    conn.commit()
+
+
 def set_priority(conn: sqlite3.Connection, queue_id: int, priority: int) -> None:
     conn.execute("UPDATE queue SET priority = ? WHERE id = ?", (priority, queue_id))
     conn.commit()

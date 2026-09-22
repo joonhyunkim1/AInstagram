@@ -180,6 +180,20 @@ def test_api_error_message_includes_response_body_but_not_token():
     assert "TOKEN" not in message
 
 
+def test_api_error_exposes_status_code_subcode_and_path():
+    response = FakeResponse(
+        {"error": {"message": "The caption was too long.", "code": 36004, "error_subcode": 2207010}},
+        status_code=400,
+    )
+    client, _ = make_client(post_responses=[response])
+
+    with pytest.raises(InstagramAPIError) as exc_info:
+        client.create_carousel_container(["item-1"], "caption")
+
+    error = exc_info.value
+    assert (error.status, error.code, error.subcode, error.path) == (400, 36004, 2207010, "IGID/media")
+
+
 def test_publish_carousel_treats_error_as_success_when_post_actually_went_live(monkeypatch):
     monkeypatch.setattr("ainstagram.publish.instagram_client.time.sleep", lambda _: None)
     client, http = make_client(

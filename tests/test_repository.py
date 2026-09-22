@@ -207,3 +207,37 @@ def test_insert_history_uses_given_published_at(tmp_path):
     by_topic = {h.topic: h for h in repo.recent_history(conn, limit=None)}
     assert by_topic["t"].published_at == "2026-08-30T09:30:00+00:00"
     assert by_topic["t2"].published_at > "2026-09-01"  # 지정하지 않으면 현재 시각
+
+
+def test_get_connection_migrates_old_queue_table(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute(
+        """
+        CREATE TABLE queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            draft_id INTEGER NOT NULL,
+            caption TEXT NOT NULL,
+            image_urls_json TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 100,
+            status TEXT NOT NULL DEFAULT 'queued',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    old.execute(
+        "INSERT INTO queue (draft_id, caption, image_urls_json, created_at) VALUES (1, 'c', '[]', 'now')"
+    )
+    old.commit()
+    old.close()
+
+    conn = get_connection(path)
+
+    item = repo.next_in_queue(conn)
+    assert item.attempts == 0 and item.last_error is None
+    assert repo.record_publish_failure(conn, item.id, "boom") == 1
+    repo.mark_queue_item_failed(conn, item.id)
+    assert repo.next_in_queue(conn) is None
+    assert repo.list_queue(conn) == []
