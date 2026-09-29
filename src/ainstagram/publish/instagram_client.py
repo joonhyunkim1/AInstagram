@@ -29,7 +29,24 @@ class InstagramAPIError(RuntimeError):
     requests의 기본 HTTPError는 토큰이 쿼리스트링에 담긴 URL을 메시지에 넣기 때문에
     (GET 요청), 그대로 텔레그램 등으로 내보내면 토큰이 노출될 수 있다. 여기서는 URL 대신
     경로와 응답 본문만 담는다.
+
+    발행 실패를 분류할 수 있도록 HTTP 상태, 에러 code/subcode, 호출 경로도 속성으로 남긴다.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: int | None = None,
+        subcode: int | None = None,
+        path: str = "",
+    ):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.subcode = subcode
+        self.path = path
 
 
 class ContainerProcessingError(RuntimeError):
@@ -56,12 +73,16 @@ class InstagramClient:
         self.base_url = f"https://graph.instagram.com/{api_version}"
 
     @staticmethod
-    def _describe_error(response: Any, path: str) -> str:
-        status = getattr(response, "status_code", "?")
+    def _error_body(response: Any) -> dict:
         try:
-            error = response.json().get("error", {})
+            return response.json().get("error", {}) or {}
         except Exception:
-            error = {}
+            return {}
+
+    @classmethod
+    def _describe_error(cls, response: Any, path: str) -> str:
+        status = getattr(response, "status_code", "?")
+        error = cls._error_body(response)
         if error:
             details = ", ".join(
                 f"{key}={error[key]}"
@@ -80,7 +101,14 @@ class InstagramClient:
         try:
             response.raise_for_status()
         except Exception:
-            raise InstagramAPIError(self._describe_error(response, path)) from None
+            error = self._error_body(response)
+            raise InstagramAPIError(
+                self._describe_error(response, path),
+                status=getattr(response, "status_code", None),
+                code=error.get("code"),
+                subcode=error.get("error_subcode"),
+                path=path,
+            ) from None
         return response.json()
 
     def _post(self, path: str, **params: Any) -> dict:

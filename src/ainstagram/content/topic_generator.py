@@ -11,6 +11,7 @@ from .. import constants as c
 from .. import repository as repo
 from ..config import AppConfig, get_config
 from . import dedup
+from .caption import fit_caption
 from .news_sources import build_news_context
 
 
@@ -158,6 +159,9 @@ def generate_and_store_drafts(
         caption = build_caption_with_hashtags(
             cand["caption"], cand.get("hashtags", []), cfg.content.fixed_hashtags
         )
+        # 발행 때 앞에 붙는 제목까지 포함해 2,200자 안에 들어오도록 미리 줄여둔다
+        # (검수 미리보기에 실제로 올라갈 캡션이 그대로 보이게 하기 위함)
+        caption = fit_caption(caption, title=cand["topic"])
         draft_id = repo.create_draft(
             conn,
             category=category,

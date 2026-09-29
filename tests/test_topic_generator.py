@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ainstagram import constants as c
 from ainstagram import repository as repo
 from ainstagram.content import topic_generator
+from ainstagram.content.caption import INSTAGRAM_CAPTION_LIMIT, caption_length, split_hashtags
 from ainstagram.db import get_connection
 
 
@@ -214,6 +215,21 @@ def test_generate_and_store_drafts_works_without_hashtags_field(tmp_path):
     draft = repo.get_draft(conn, draft_ids[0])
     assert draft.caption.startswith("c1")
     assert "#AI" in draft.caption  # 고정 해시태그는 여전히 붙음
+
+
+def test_generate_and_store_drafts_trims_caption_to_fit_with_title(tmp_path):
+    conn = make_conn(tmp_path)
+    body = " ".join(f"Sentence {i} explains another part of the story." for i in range(80))
+    cand = {"topic": "A fairly long headline for the post", "caption": body, "slides": ["s1"]}
+    llm = FakeLLM(batches=[[cand]], embeddings_by_key={f"{cand['topic']}\n{body}": [1.0, 0.0]})
+
+    draft_ids = topic_generator.generate_and_store_drafts(conn, c.CATEGORY_NEWS, llm, count=1)
+
+    draft = repo.get_draft(conn, draft_ids[0])
+    assert caption_length(f"{draft.topic}\n\n{draft.caption}") <= INSTAGRAM_CAPTION_LIMIT
+    kept_body, tags = split_hashtags(draft.caption)
+    assert kept_body.endswith("part of the story.")
+    assert "#AI" in tags  # 해시태그는 유지
 
 
 def test_build_caption_with_hashtags_dedupes_case_insensitively():

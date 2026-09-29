@@ -43,7 +43,10 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
 
+      # 게시가 실패해도 커밋한다: 실패 횟수/대기열 제외 표시와 (대기열이 비어서) 새로 만든
+      # 게시물이 저장돼야, 다음 실행에서 같은 항목을 무한 재시도하거나 매번 새로 생성하지 않는다.
       - name: DB 변경사항 커밋
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "ainstagram-bot"
           git config user.email "actions@users.noreply.github.com"
